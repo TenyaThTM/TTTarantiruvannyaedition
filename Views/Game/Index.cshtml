@@ -11,6 +11,8 @@
         <input type="text" id="connectionUrl" readonly>
         <button id="copyUrl">Копировать</button>
     </div>
+    <div style="margin-top: 20px;">
+<button id="forceRefresh" style="padding: 10px; margin: 5px; background: #6c757d;">Обновить</button>        </div>
 
     <!-- Главный экран -->
     <div id="mainScreen">
@@ -74,6 +76,12 @@
             <ul id="players"></ul>
         </div>
 
+<div id="checkGameSection" style="display: none; margin-top: 20px;">
+    <button id="checkGame" style="padding: 15px 30px; font-size: 18px; background: #17a2b8;">
+        Проверить начало игры
+    </button>
+</div>
+
         <!-- Кнопка начала игры (только для создателя лобби) -->
         <div id="startGameSection" style="display: none; margin-top: 20px;">
             <button id="startGame" style="padding: 15px 30px; font-size: 18px; background: #28a745;">Начать игру</button>
@@ -83,6 +91,7 @@
         <div style="margin-top: 20px;">
             <button id="leaveLobby" style="padding: 15px 30px; font-size: 18px; background: #dc3545;">Выйти из лобби</button>
         </div>
+
     </div>
 </div>
 
@@ -319,10 +328,16 @@
         color: #2196F3;
     }
 </style>
-
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Game script loaded');
+    
+    // Проверяем существующую игру/лобби
+    checkExistingGame().then(hasExistingSession => {
+        if (!hasExistingSession) {
+            showScreen('main');
+        }
+    });
     
     // Элементы DOM
     const mainScreen = document.getElementById('mainScreen');
@@ -339,6 +354,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const showLobbiesBtn = document.getElementById('showLobbies');
     const backToMainBtn = document.getElementById('backToMain');
     const startGameBtn = document.getElementById('startGame');
+    const leaveLobbyBtn = document.getElementById('leaveLobby');
     const boardElement = document.getElementById('board');
     const statusElement = document.getElementById('status');
     const tokenElements = document.querySelectorAll('.token');
@@ -377,7 +393,12 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Selected color:', selectedColor);
         });
     });
-    
+    document.getElementById('checkGame').addEventListener('click', async () => {
+    const gameStarted = await checkGameStarted();
+    if (!gameStarted) {
+        alert('Игра еще не началась!');
+    }
+});
     // Показать экран
     function showScreen(screenName) {
         console.log('Showing screen:', screenName);
@@ -409,7 +430,35 @@ document.addEventListener('DOMContentLoaded', function() {
                 break;
         }
     }
-    
+    startGameBtn.addEventListener('click', async () => {
+    try {
+        console.log('Starting game...');
+        const response = await fetch('/Game/StartGame', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ LobbyId: currentLobbyId })
+        });
+        
+        const result = await response.json();
+        console.log('Start game result:', result);
+        
+        if (result.success) {
+            currentGameId = result.gameId;
+            statusElement.textContent = 'Игра начинается! Уведомляем других игроков...';
+            
+            // Даем время другим игрокам получить уведомление
+            setTimeout(() => {
+                showScreen('game');
+                startGamePolling();
+            }, 1000);
+        } else {
+            alert('Не удалось начать игру: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Ошибка начала игры:', error);
+        alert('Ошибка при запуске игры');
+    }
+});
     // Создание лобби
     createLobbyBtn.addEventListener('click', async () => {
         if (!selectedColor) {
@@ -519,45 +568,48 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Присоединение к существующему лобби
     async function joinExistingLobby(lobbyId) {
-        if (!selectedColor) {
-            alert('Пожалуйста, выберите цвет!');
-            return;
-        }
-        
-        try {
-            console.log('Joining existing lobby:', lobbyId);
-            const joinResponse = await fetch('/Game/JoinLobby', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    LobbyId: lobbyId,
-                    Color: selectedColor,
-                    Name: `Игрок ${selectedColor}`
-                })
-            });
-            
-            const joinResult = await joinResponse.json();
-            console.log('Join result:', joinResult);
-            
-            if (joinResult.success) {
-                currentLobbyId = lobbyId;
-                myColor = selectedColor;
-                isLobbyCreator = false;
-                
-                showScreen('lobby');
-                statusElement.textContent = 'Присоединились к лобби! Ожидаем начала игры...';
-                startGameSection.style.display = 'none';
-                
-                // Немедленно запрашиваем состояние лобби
-                await updateLobbyState();
-                startLobbyPolling();
-            } else {
-                alert('Не удалось присоединиться к лобби: ' + joinResult.error);
-            }
-        } catch (error) {
-            console.error('Ошибка присоединения к лобби:', error);
-        }
+    if (!selectedColor) {
+        alert('Пожалуйста, выберите цвет!');
+        return;
     }
+    
+    try {
+        console.log('Joining existing lobby:', lobbyId);
+        const joinResponse = await fetch('/Game/JoinLobby', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                LobbyId: lobbyId,
+                Color: selectedColor,
+                Name: `Игрок ${selectedColor}`
+            })
+        });
+        
+        const joinResult = await joinResponse.json();
+        console.log('Join result:', joinResult);
+        
+        if (joinResult.success) {
+            currentLobbyId = lobbyId;
+            myColor = selectedColor;
+            isLobbyCreator = false;
+            
+            showScreen('lobby');
+            statusElement.textContent = 'Присоединились к лобби! Ожидаем начала игры...';
+            startGameSection.style.display = 'none';
+            
+            // Показываем кнопку проверки для присоединившихся игроков
+            document.getElementById('checkGameSection').style.display = 'block';
+            
+            // Немедленно запрашиваем состояние лобби
+            await updateLobbyState();
+            startLobbyPolling();
+        } else {
+            alert('Не удалось присоединиться к лобби: ' + joinResult.error);
+        }
+    } catch (error) {
+        console.error('Ошибка присоединения к лобби:', error);
+    }
+}
     
     // Обновление состояния лобби
     async function updateLobbyState() {
@@ -584,52 +636,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Ошибка обновления состояния лобби:', error);
         }
     }
-    // Кнопка выхода из лобби
-const leaveLobbyBtn = document.getElementById('leaveLobby');
-if (leaveLobbyBtn) {
-    leaveLobbyBtn.addEventListener('click', async () => {
-        try {
-            const response = await fetch('/Game/LeaveLobby', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            const result = await response.json();
-            if (result.success) {
-                // Полная очистка состояния
-                await resetSession();
-                showScreen('main');
-            }
-        } catch (error) {
-            console.error('Ошибка выхода из лобби:', error);
-        }
-    });
-}
-
-// Функция сброса сессии
-async function resetSession() {
-    try {
-        await fetch('/Game/ResetSession', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        
-        // Сброс локальных переменных
-        currentLobbyId = null;
-        currentGameId = null;
-        myColor = null;
-        isLobbyCreator = false;
-        
-        if (pollInterval) clearInterval(pollInterval);
-        
-        console.log('Session reset complete');
-    } catch (error) {
-        console.error('Ошибка сброса сессии:', error);
-    }
-}
-
-// При загрузке страницы сбрасываем сессию
-
+    
     // Запуск игры
     startGameBtn.addEventListener('click', async () => {
         try {
@@ -659,114 +666,188 @@ async function resetSession() {
         }
     });
     
+    // Выйти из лобби
+    leaveLobbyBtn.addEventListener('click', async () => {
+        try {
+            // Очищаем сессию на сервере
+            const response = await fetch('/Game/LeaveLobby', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            // Сбрасываем локальное состояние
+            currentLobbyId = null;
+            currentGameId = null;
+            myColor = null;
+            isLobbyCreator = false;
+            
+            if (pollInterval) clearInterval(pollInterval);
+            
+            showScreen('main');
+            statusElement.textContent = 'Выберите цвет и нажмите "Создать лобби" или "Присоединиться"';
+            
+        } catch (error) {
+            console.error('Ошибка выхода из лобби:', error);
+            // Все равно переходим на главный экран
+            showScreen('main');
+        }
+    });
+    async function checkGameStarted() {
+    try {
+        console.log('Force checking if game started...');
+        const response = await fetch('/Game/CheckGameStarted');
+        const result = await response.json();
+        
+        if (result.gameStarted) {
+            console.log('Game has started! Switching to game screen');
+            currentGameId = result.gameId;
+            clearInterval(pollInterval);
+            showScreen('game');
+            startGamePolling();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('Error checking game start:', error);
+        return false;
+    }
+}
     // Опрос состояния лобби
     function startLobbyPolling() {
-        if (pollInterval) clearInterval(pollInterval);
-        
-        console.log('Starting lobby polling');
-        pollInterval = setInterval(async () => {
-            try {
-                console.log('Polling lobby state...');
-                const response = await fetch('/Game/LobbyState');
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const lobbyData = await response.json();
-                console.log('Lobby poll result:', lobbyData);
-                
-                if (lobbyData.error) {
-                    console.error('Lobby error:', lobbyData.error);
-                    if (lobbyData.error.includes("not found") || lobbyData.error.includes("No lobby")) {
-                        statusElement.textContent = "Лобби было закрыто";
-                        clearInterval(pollInterval);
-                        showScreen('main');
-                    }
-                    return;
-                }
-                
-                // Обновляем список игроков
-                updatePlayersList(lobbyData.players || []);
-                
-                // Если игра началась
-                if (lobbyData.status === 'GameStarted' && lobbyData.gameId) {
-                    console.log('Game started! Switching to game screen');
-                    currentGameId = lobbyData.gameId;
+    if (pollInterval) clearInterval(pollInterval);
+    
+    console.log('Starting lobby polling for lobby:', currentLobbyId);
+    
+    // Сразу проверяем, не началась ли уже игра
+    checkGameStarted();
+    
+    pollInterval = setInterval(async () => {
+        try {
+            console.log('Polling lobby state...');
+            const response = await fetch('/Game/LobbyState');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const lobbyData = await response.json();
+            console.log('Lobby poll result:', lobbyData);
+            
+            if (lobbyData.error) {
+                console.error('Lobby error:', lobbyData.error);
+                if (lobbyData.error.includes("not found") || lobbyData.error.includes("No lobby")) {
+                    statusElement.textContent = "Лобби было закрыто";
                     clearInterval(pollInterval);
-                    showScreen('game');
-                    startGamePolling();
+                    showScreen('main');
                 }
-            } catch (error) {
-                console.error('Ошибка опроса лобби:', error);
-            } if (lobbyData.error) {
-    console.error('Lobby error:', lobbyData.error);
-    if (lobbyData.error.includes("not found") || 
-        lobbyData.error.includes("expired") ||
-        lobbyData.error.includes("not in this lobby")) {
-        statusElement.textContent = "Лобби было закрыто или вы были отключены";
-        clearInterval(pollInterval);
-        
-        // Очищаем сессию
-        await resetSession();
-        showScreen('main');
-    }
-    return;
+                return;
+            }
+            
+            // Обновляем список игроков
+            updatePlayersList(lobbyData.players || []);
+            
+            // Если игра началась
+            if (lobbyData.status === 'GameStarted' && lobbyData.gameId) {
+                console.log('Game started! Switching to game screen');
+                currentGameId = lobbyData.gameId;
+                clearInterval(pollInterval);
+                showScreen('game');
+                startGamePolling();
+            }
+        } catch (error) {
+            console.error('Ошибка опроса лобби:', error);
+        }
+    }, 2000);
 }
-        }, 2000);
-        
-    }
     
     // Опрос состояния игры
     function startGamePolling() {
-        if (pollInterval) clearInterval(pollInterval);
-        
-        console.log('Starting game polling');
-        pollInterval = setInterval(async () => {
-            try {
-                console.log('Polling game state...');
-                const response = await fetch('/Game/GameState');
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const gameData = await response.json();
-                console.log('Game poll result:', gameData);
-                
-                if (gameData.error) {
-                    console.error('Game error:', gameData.error);
-                    return;
-                }
-                
-                // Обновляем доску
-                updateBoard(gameData);
-                
-                // Обновляем статус
-                updateStatus(gameData);
-                
-                // Обновляем список игроков
-                updateGamePlayersList(gameData.players || []);
-                
-            } catch (error) {
-                console.error('Ошибка опроса игры:', error);
-            }if (gameData.error) {
-    console.error('Game error:', gameData.error);
-    if (gameData.error.includes("not found") || 
-        gameData.error.includes("expired") ||
-        gameData.error.includes("not in this game")) {
-        statusElement.textContent = "Игра была завершена или вы были отключены";
-        clearInterval(pollInterval);
-        
-        // Очищаем сессию
-        await resetSession();
-        showScreen('main');
-    }
-    return;
-}
-        }, 2000);
-    }
+    if (pollInterval) clearInterval(pollInterval);
     
+    console.log('Starting game polling for game:', currentGameId);
+    
+    pollInterval = setInterval(async () => {
+        try {
+            console.log('Polling game state...');
+            const response = await fetch('/Game/GameState');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const gameData = await response.json();
+            console.log('Game poll result:', gameData);
+            
+            if (gameData.error) {
+                console.error('Game error:', gameData.error);
+                
+                // Если игра не найдена, пытаемся переподключиться к лобби
+                if (gameData.error.includes("not found") || gameData.error.includes("not in this game")) {
+                    console.log('Game not found, trying to reconnect to lobby...');
+                    clearInterval(pollInterval);
+                    
+                    // Проверяем, может игра уже началась по-новой
+                    const reconnected = await checkGameStarted();
+                    if (!reconnected) {
+                        // Возвращаемся в лобби
+                        showScreen('lobby');
+                        startLobbyPolling();
+                    }
+                }
+                return;
+            }
+            
+            // Обновляем доску
+            updateBoard(gameData);
+            
+            // Обновляем статус
+            updateStatus(gameData);
+            
+            // Обновляем список игроков
+            updateGamePlayersList(gameData.players || []);
+            
+        } catch (error) {
+            console.error('Ошибка опроса игры:', error);
+            
+            // При ошибке сети пытаемся переподключиться
+            const reconnected = await checkGameStarted();
+            if (!reconnected) {
+                console.log('Could not reconnect, staying in game screen');
+            }
+        }
+    }, 2000);
+}
+    async function checkExistingGame() {
+    try {
+        const gameId = @Json.Serialize(Context.Session.GetInt32("GameId"));
+        if (gameId) {
+            console.log('Existing game found in session:', gameId);
+            currentGameId = gameId;
+            showScreen('game');
+            startGamePolling();
+            return true;
+        }
+        
+        const lobbyId = @Json.Serialize(Context.Session.GetInt32("LobbyId"));
+        if (lobbyId) {
+            console.log('Existing lobby found in session:', lobbyId);
+            currentLobbyId = lobbyId;
+            
+            // Проверяем, не началась ли уже игра
+            const gameStarted = await checkGameStarted();
+            if (!gameStarted) {
+                showScreen('lobby');
+                startLobbyPolling();
+            }
+            return true;
+        }
+        
+        return false;
+    } catch (error) {
+        console.error('Error checking existing game:', error);
+        return false;
+    }
+}
     // Обновление списка игроков в лобби
     function updatePlayersList(players) {
         console.log('Updating players list:', players);
@@ -945,5 +1026,4 @@ async function resetSession() {
         console.error('Unhandled promise rejection:', e.reason);
     });
 });
-resetSession();
 </script>

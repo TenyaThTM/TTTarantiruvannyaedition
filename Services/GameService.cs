@@ -112,34 +112,17 @@ public Lobby GetLobby(int lobbyId)
 {
     lock (_lock)
     {
-        Console.WriteLine($"StartGame called: lobbyId={lobbyId}, playerId={playerId}");
-        
         var lobby = _lobbies.FirstOrDefault(l => l.Id == lobbyId);
-        if (lobby == null)
-        {
-            Console.WriteLine("Lobby not found");
+        if (lobby == null || lobby.Status != LobbyStatus.WaitingForPlayers)
             return false;
-        }
-        
-        Console.WriteLine($"Lobby status: {lobby.Status}, Players: {lobby.Players.Count}");
-        
-        if (lobby.Status != LobbyStatus.WaitingForPlayers)
-        {
-            Console.WriteLine("Lobby not in waiting state");
-            return false;
-        }
 
-        if (lobby.Players.Count < 2)
-        {
-            Console.WriteLine("Not enough players");
-            return false;
-        }
-
+        // Проверяем, что игрок есть в лобби
         if (!lobby.Players.Any(p => p.Id == playerId))
-        {
-            Console.WriteLine("Player not in lobby");
             return false;
-        }
+
+        // Минимально 2 игрока для начала игры
+        if (lobby.Players.Count < 2)
+            return false;
 
         // Создаем игру из лобби
         var game = new GameState
@@ -163,7 +146,6 @@ public Lobby GetLobby(int lobbyId)
         lobby.Status = LobbyStatus.GameStarted;
         lobby.GameId = game.Id;
 
-        Console.WriteLine($"Game started successfully. GameId: {game.Id}");
         return true;
     }
 }

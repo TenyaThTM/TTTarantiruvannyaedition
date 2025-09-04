@@ -170,7 +170,7 @@ public IActionResult ResetSession()
         return Json(new { success = false, error = ex.Message });
     }
 }
-        [HttpGet]
+       [HttpGet]
 public IActionResult GameState()
 {
     try
@@ -182,59 +182,132 @@ public IActionResult GameState()
         var game = _gameService.GetGame(gameId.Value);
         if (game == null)
         {
-            // Игра не найдена, очищаем сессию
             HttpContext.Session.Remove("GameId");
-            return Json(new { error = "Game not found or expired" });
+            return Json(new { error = "Game not found" });
         }
 
-        // Проверяем, принадлежит ли игрок к этой игре
         var playerId = HttpContext.Session.Id;
         if (!game.Players.Any(p => p.Id == playerId))
         {
             HttpContext.Session.Remove("GameId");
             return Json(new { error = "Player not in this game" });
         }
-        Console.WriteLine("Something wrong");
-        return Json(new { error = "No error" });
+
+        // ПРЕОБРАЗУЕМ ДВУМЕРНЫЙ МАССИВ В СПИСОК ДЛЯ СЕРИАЛИЗАЦИИ
+        var cells = new List<object>();
+        for (int y = 0; y < game.Height; y++)
+        {
+            for (int x = 0; x < game.Width; x++)
+            {
+                var cell = game.Board[y, x];
+                cells.Add(new
+                {
+                    x = cell.X,
+                    y = cell.Y,
+                    blocked = cell.Blocked,
+                    owner = cell.Owner,
+                    progress = cell.Progress
+                });
+            }
+        }
+
+        // ВОЗВРАЩАЕМ РЕАЛЬНЫЕ ДАННЫЕ ИГРЫ
+        return Json(new
+        {
+            width = game.Width,
+            height = game.Height,
+            captureProgress = game.CaptureProgress,
+            players = game.Players,
+            currentPlayerIndex = game.CurrentPlayerIndex,
+            currentPlayer = game.Players.Count > 0 ? game.Players[game.CurrentPlayerIndex]?.Color : null,
+            gameOver = game.GameOver,
+            winner = game.Winner,
+            cells = cells
+        });
     }
     catch (Exception ex)
     {
         return Json(new { error = ex.Message });
     }
 }
+[HttpGet]
+public IActionResult CheckGameStarted()
+{
+    try
+    {
+        var lobbyId = HttpContext.Session.GetInt32("LobbyId");
+        if (!lobbyId.HasValue)
+            return Json(new { gameStarted = false, error = "No lobby found" });
 
+        var lobby = _gameService.GetLobby(lobbyId.Value);
+        if (lobby == null)
+            return Json(new { gameStarted = false, error = "Lobby not found" });
+
+        // Проверяем, началась ли игра
+        if (lobby.Status == LobbyStatus.GameStarted && lobby.GameId.HasValue)
+        {
+            HttpContext.Session.SetInt32("GameId", lobby.GameId.Value);
+            return Json(new { 
+                gameStarted = true, 
+                gameId = lobby.GameId.Value 
+            });
+        }
+
+        return Json(new { gameStarted = false });
+    }
+    catch (Exception ex)
+    {
+        return Json(new { gameStarted = false, error = ex.Message });
+    }
+}
 [HttpGet]
 public IActionResult LobbyState()
 {
     try
     {
         var lobbyId = HttpContext.Session.GetInt32("LobbyId");
+        Console.WriteLine($"LobbyState called. Session LobbyId: {lobbyId}");
+        
         if (!lobbyId.HasValue)
+        {
+            Console.WriteLine("No lobbyId in session");
             return Json(new { error = "No lobby found" });
+        }
 
         var lobby = _gameService.GetLobby(lobbyId.Value);
         if (lobby == null)
         {
-            // Лобби не найдено, очищаем сессию
+            Console.WriteLine($"Lobby {lobbyId} not found in service");
             HttpContext.Session.Remove("LobbyId");
             HttpContext.Session.Remove("IsLobbyCreator");
-            return Json(new { error = "Lobby not found or expired" });
+            return Json(new { error = "Lobby not found" });
         }
 
-        // Проверяем, принадлежит ли игрок к этому лобби
         var playerId = HttpContext.Session.Id;
+        Console.WriteLine($"Checking player {playerId} in lobby {lobbyId}");
+        
         if (!lobby.Players.Any(p => p.Id == playerId))
         {
+            Console.WriteLine($"Player {playerId} not found in lobby {lobbyId}");
             HttpContext.Session.Remove("LobbyId");
             HttpContext.Session.Remove("IsLobbyCreator");
             return Json(new { error = "Player not in this lobby" });
         }
-        Console.WriteLine("Something wrong");
-        return Json(new { error = "No error" });
-        // ... остальной код преобразования в JSON
+
+        Console.WriteLine($"Returning lobby data: {lobby.Players.Count} players, status: {lobby.Status}");
+        return Json(new
+        {
+            id = lobby.Id,
+            width = lobby.Width,
+            height = lobby.Height,
+            players = lobby.Players,
+            status = lobby.Status,
+            gameId = lobby.GameId
+        });
     }
     catch (Exception ex)
     {
+        Console.WriteLine($"LobbyState error: {ex}");
         return Json(new { error = ex.Message });
     }
 }
