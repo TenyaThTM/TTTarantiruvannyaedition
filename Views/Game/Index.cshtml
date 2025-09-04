@@ -1,58 +1,528 @@
-@{
-    ViewData["Title"] = "Шуточные крестики-нолики";
-}
-
 <div class="container">
-    <h1>Шуточные крестики-нолики</h1>
+    <h1>TTTarantiruvannyaedition</h1>
+    
+    <!-- Строка с информацией о подключении -->
+    <div class="connection-info">
+        <label>Адрес для подключения:</label>
+        <input type="text" id="connectionUrl" readonly>
+        <button id="copyUrl">Копировать</button>
+    </div>
     
     <div class="controls">
         <h2>Параметры игры</h2>
         <div class="param-group">
             <label for="n">Ширина поля (n):</label>
-            <input type="number" id="n" min="3" max="10" value="5">
+            <input type="number" id="n" min="3" max="20" value="8" style="width: 80px; height: 30px; font-size: 16px;">
         </div>
         <div class="param-group">
             <label for="b">Высота поля (b):</label>
-            <input type="number" id="b" min="3" max="10" value="5">
+            <input type="number" id="b" min="3" max="20" value="8" style="width: 80px; height: 30px; font-size: 16px;">
         </div>
         <div class="param-group">
             <label for="d">Шанс блокировки (%):</label>
-            <input type="number" id="d" min="0" max="100" value="15">
+            <input type="number" id="d" min="0" max="100" value="15" style="width: 80px; height: 30px; font-size: 16px;">
         </div>
         <div class="param-group">
             <label for="t">Длина линии для победы:</label>
-            <input type="number" id="t" min="3" max="5" value="4">
+            <input type="number" id="t" min="3" max="10" value="5" style="width: 80px; height: 30px; font-size: 16px;">
         </div>
         <div class="param-group">
             <label for="u">Прогресс захвата (ходов):</label>
-            <input type="number" id="u" min="1" max="5" value="2">
+            <input type="number" id="u" min="1" max="10" value="3" style="width: 80px; height: 30px; font-size: 16px;">
         </div>
         
         <h2>Выберите цвет для игры</h2>
         <div class="token-selection">
-            <div class="token" style="background-color: #FF5252;" data-color="#FF5252"></div>
-            <div class="token" style="background-color: #FFEB3B;" data-color="#FFEB3B"></div>
-            <div class="token" style="background-color: #4CAF50;" data-color="#4CAF50"></div>
-            <div class="token" style="background-color: #2196F3;" data-color="#2196F3"></div>
-            <div class="token" style="background-color: #9C27B0;" data-color="#9C27B0"></div>
-            <div class="token" style="background-color: #FF9800;" data-color="#FF9800"></div>
-        </div>
-        
-        <div class="form-group">
-            <label for="playerName">Ваше имя:</label>
-            <input type="text" id="playerName" placeholder="Введите ваше имя">
+            <div class="token" style="background-color: #FF5252; width: 50px; height: 50px;" data-color="#FF5252"></div>
+            <div class="token" style="background-color: #FFEB3B; width: 50px; height: 50px;" data-color="#FFEB3B"></div>
+            <div class="token" style="background-color: #4CAF50; width: 50px; height: 50px;" data-color="#4CAF50"></div>
+            <div class="token" style="background-color: #2196F3; width: 50px; height: 50px;" data-color="#2196F3"></div>
+            <div class="token" style="background-color: #9C27B0; width: 50px; height: 50px;" data-color="#9C27B0"></div>
+            <div class="token" style="background-color: #FF9800; width: 50px; height: 50px;" data-color="#FF9800"></div>
         </div>
         
         <div class="buttons">
-            <button id="start">Начать игру</button>
-            <button id="restart" disabled>Рестарт</button>
+            <button id="start" style="padding: 15px 30px; font-size: 18px;">Начать игру</button>
+            <button id="restart" disabled style="padding: 15px 30px; font-size: 18px;">Рестарт</button>
         </div>
     </div>
     
     <div class="game-board" id="board"></div>
-    <div class="status" id="status">Выберите цвет и нажмите "Начать игру"</div>
+    <div class="status" id="status" style="font-size: 20px; padding: 15px;">Выберите цвет и нажмите "Начать игру"</div>
+    
+    <!-- Секция для отображения подключенных игроков -->
+    <div class="players-list" id="playersList">
+        <h3>Подключенные игроки:</h3>
+        <ul id="players"></ul>
+    </div>
 </div>
 
-@section Scripts {
-    <script src="~/js/game.js"></script>
-}
+<style>
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        font-family: Arial, sans-serif;
+    }
+    
+    .connection-info {
+        margin: 20px 0;
+        padding: 15px;
+        background: #f0f8ff;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        font-size: 16px;
+    }
+    
+    .connection-info label {
+        font-weight: bold;
+        min-width: 180px;
+    }
+    
+    #connectionUrl {
+        flex: 1;
+        padding: 12px;
+        font-size: 16px;
+        border: 2px solid #ccc;
+        border-radius: 6px;
+        min-width: 300px;
+    }
+    
+    #copyUrl {
+        padding: 12px 25px;
+        font-size: 16px;
+        background: #2196F3;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    
+    .controls {
+        background: white;
+        padding: 25px;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin: 20px 0;
+    }
+    
+    .param-group {
+        margin: 15px 0;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    
+    .param-group label {
+        min-width: 220px;
+        font-size: 16px;
+        font-weight: bold;
+    }
+    
+    .token-selection {
+        display: flex;
+        gap: 15px;
+        margin: 20px 0;
+        flex-wrap: wrap;
+    }
+    
+    .token {
+        border-radius: 50%;
+        cursor: pointer;
+        border: 3px solid transparent;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+    }
+    
+    .token.selected {
+        border: 4px solid #000;
+        transform: scale(1.1);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    
+    .buttons {
+        margin: 25px 0;
+        display: flex;
+        gap: 20px;
+    }
+    
+    .game-board {
+        margin: 25px 0;
+        display: grid;
+        gap: 4px;
+        justify-content: center;
+    }
+    
+    .cell {
+        width: 60px;
+        height: 60px;
+        border: 2px solid #333;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        background: white;
+        position: relative;
+        font-size: 20px;
+        font-weight: bold;
+        transition: all 0.2s;
+    }
+    
+    .cell:hover {
+        background: #f0f0f0;
+    }
+    
+    .cell.blocked {
+        background: #666;
+        cursor: not-allowed;
+    }
+    
+    .capture-progress {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        height: 6px;
+        background: #4CAF50;
+        width: 0%;
+    }
+    
+    .players-list {
+        margin-top: 25px;
+        padding: 20px;
+        background: #f9f9f9;
+        border-radius: 10px;
+        width: 100%;
+    }
+    
+    .players-list h3 {
+        margin: 0 0 15px 0;
+        font-size: 18px;
+    }
+    
+    .players-list ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .players-list li {
+        padding: 12px;
+        margin: 8px 0;
+        background: white;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 16px;
+    }
+    
+    .player-color {
+        width: 25px;
+        height: 25px;
+        border-radius: 50%;
+        border: 2px solid #ccc;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Элементы DOM
+    const nInput = document.getElementById('n');
+    const bInput = document.getElementById('b');
+    const dInput = document.getElementById('d');
+    const tInput = document.getElementById('t');
+    const uInput = document.getElementById('u');
+    const startButton = document.getElementById('start');
+    const restartButton = document.getElementById('restart');
+    const boardElement = document.getElementById('board');
+    const statusElement = document.getElementById('status');
+    const tokenElements = document.querySelectorAll('.token');
+    const playersListElement = document.getElementById('players');
+    const connectionUrlInput = document.getElementById('connectionUrl');
+    const copyUrlButton = document.getElementById('copyUrl');
+    
+    let selectedColor = null;
+    let gameId = null;
+    let currentPlayerColor = null;
+    let myColor = null;
+    let gameInterval = null;
+    let gameState = null;
+    
+    // Генерируем базовый URL
+    const baseUrl = window.location.origin;
+    connectionUrlInput.value = baseUrl;
+    
+    // Копирование URL
+    copyUrlButton.addEventListener('click', function() {
+        connectionUrlInput.select();
+        document.execCommand('copy');
+        alert('URL скопирован в буфер обмена!');
+    });
+    
+    // Обработчики выбора токена
+    tokenElements.forEach(token => {
+        token.addEventListener('click', () => {
+            tokenElements.forEach(t => t.classList.remove('selected'));
+            token.classList.add('selected');
+            selectedColor = token.getAttribute('data-color');
+        });
+    });
+    
+    // Обработчик начала игры
+    startButton.addEventListener('click', async () => {
+        if (!selectedColor) {
+            alert('Пожалуйста, выберите цвет для игры!');
+            return;
+        }
+        
+        const params = {
+            Width: parseInt(nInput.value),
+            Height: parseInt(bInput.value),
+            BlockChance: parseInt(dInput.value),
+            WinLength: parseInt(tInput.value),
+            CaptureProgress: parseInt(uInput.value)
+        };
+        
+        try {
+            // Создаем игру
+            const createResponse = await fetch('/Game/CreateGame', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(params)
+            });
+            
+            const createResult = await createResponse.json();
+            
+            if (!createResult.success) {
+                alert('Ошибка создания игры: ' + createResult.error);
+                return;
+            }
+            
+            gameId = createResult.gameId;
+            
+            // Обновляем URL для подключения
+            connectionUrlInput.value = `${baseUrl}?gameId=${gameId}`;
+            
+            // Присоединяемся к игре
+            const joinResponse = await fetch('/Game/JoinGame', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    GameId: gameId,
+                    Color: selectedColor,
+                    Name: `Игрок ${selectedColor}`
+                })
+            });
+            
+            const joinResult = await joinResponse.json();
+            
+            if (joinResult.success) {
+                myColor = selectedColor;
+                startButton.disabled = true;
+                restartButton.disabled = false;
+                
+                // Начинаем опрос состояния игры
+                startGamePolling();
+            } else {
+                alert('Не удалось присоединиться к игре. Возможно, этот цвет уже занят.');
+            }
+        } catch (error) {
+            console.error('Ошибка:', error);
+            alert('Произошла ошибка при создании игры');
+        }
+    });
+    
+    // Обработчик рестарта
+    restartButton.addEventListener('click', () => {
+        if (gameInterval) clearInterval(gameInterval);
+        location.reload();
+    });
+    
+    // Функция опроса состояния игры
+    function startGamePolling() {
+        if (gameInterval) clearInterval(gameInterval);
+        
+        gameInterval = setInterval(async () => {
+            try {
+                const response = await fetch('/Game/GameState');
+                const gameData = await response.json();
+                
+                if (gameData.error) {
+                    console.error(gameData.error);
+                    return;
+                }
+                
+                gameState = gameData;
+                
+                // Обновляем доску
+                updateBoard(gameData);
+                
+                // Обновляем статус
+                updateStatus(gameData);
+                
+                // Обновляем список игроков
+                updatePlayersList(gameData.players);
+                
+            } catch (error) {
+                console.error('Ошибка при получении состояния игры:', error);
+            }
+        }, 2000);
+    }
+    
+    // Функция обновления списка игроков
+    function updatePlayersList(players) {
+        playersListElement.innerHTML = '';
+        
+        if (players && players.length > 0) {
+            players.forEach(player => {
+                const li = document.createElement('li');
+                
+                const colorSpan = document.createElement('span');
+                colorSpan.className = 'player-color';
+                colorSpan.style.backgroundColor = player.color;
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = `${player.name}`;
+                
+                li.appendChild(colorSpan);
+                li.appendChild(nameSpan);
+                playersListElement.appendChild(li);
+            });
+        } else {
+            const li = document.createElement('li');
+            li.textContent = 'Нет подключенных игроков';
+            playersListElement.appendChild(li);
+        }
+    }
+    
+    // Функция обновления игровой доски
+    function updateBoard(gameData) {
+        boardElement.innerHTML = '';
+        boardElement.style.gridTemplateColumns = `repeat(${gameData.width}, 60px)`;
+        
+        for (let y = 0; y < gameData.height; y++) {
+            for (let x = 0; x < gameData.width; x++) {
+                const cellIndex = y * gameData.width + x;
+                const cellData = gameData.cells[cellIndex];
+                const cell = document.createElement('div');
+                cell.className = 'cell' + (cellData.blocked ? ' blocked' : '');
+                cell.dataset.x = cellData.x;
+                cell.dataset.y = cellData.y;
+                
+                if (!cellData.blocked && cellData.owner === null) {
+                    cell.addEventListener('click', handleCellClick);
+                }
+                
+                if (cellData.owner) {
+                    const owner = gameData.players.find(p => p.id === cellData.owner);
+                    if (owner) {
+                        cell.style.backgroundColor = owner.color;
+                        cell.textContent = '✓';
+                        cell.style.color = 'white';
+                    }
+                }
+                
+                const progressBar = document.createElement('div');
+                progressBar.className = 'capture-progress';
+                progressBar.style.width = `${(cellData.progress / gameData.captureProgress) * 100}%`;
+                cell.appendChild(progressBar);
+                
+                boardElement.appendChild(cell);
+            }
+        }
+    }
+    
+    // Функция обновления статуса
+    function updateStatus(gameData) {
+        if (gameData.gameOver) {
+            if (gameData.winner) {
+                const winner = gameData.players.find(p => p.id === gameData.winner);
+                statusElement.textContent = `🎉 Игра окончена! Победил ${winner.name}! 🎉`;
+                statusElement.style.background = '#d4edda';
+                statusElement.style.color = '#155724';
+            } else {
+                statusElement.textContent = '🤝 Игра окончена! Ничья!';
+                statusElement.style.background = '#e2e3e5';
+                statusElement.style.color = '#383d41';
+            }
+            clearInterval(gameInterval);
+        } else {
+            currentPlayerColor = gameData.currentPlayer;
+            if (gameData.players && gameData.players.length > 0) {
+                const currentPlayer = gameData.players[gameData.currentPlayerIndex];
+                statusElement.textContent = `🎮 Ход игрока ${currentPlayer.name}`;
+                statusElement.style.background = '#d1ecf1';
+                statusElement.style.color = '#0c5460';
+                
+                // Если сейчас наш ход
+                if (currentPlayerColor === myColor) {
+                    statusElement.textContent += ' (Ваш ход! 👆)';
+                    statusElement.style.background = '#fff3cd';
+                    statusElement.style.color = '#856404';
+                }
+            }
+        }
+    }
+    
+    // Обработчик клика по клетке
+    async function handleCellClick(e) {
+        if (!gameState || gameState.gameOver) return;
+        if (currentPlayerColor !== myColor) {
+            alert('⏳ Сейчас не ваш ход!');
+            return;
+        }
+        
+        const x = parseInt(e.target.dataset.x);
+        const y = parseInt(e.target.dataset.y);
+        
+        try {
+            const response = await fetch('/Game/MakeMove', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ X: x, Y: y })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Немедленно обновляем состояние
+                const gameResponse = await fetch('/Game/GameState');
+                const newGameState = await gameResponse.json();
+                gameState = newGameState;
+                
+                updateBoard(newGameState);
+                updateStatus(newGameState);
+            } else {
+                alert('❌ Неверный ход! ' + (result.error || ''));
+            }
+        } catch (error) {
+            console.error('Ошибка при выполнении хода:', error);
+        }
+    }
+    
+    // Проверяем, есть ли gameId в URL параметрах
+    function checkUrlForGameId() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlGameId = urlParams.get('gameId');
+        
+        if (urlGameId) {
+            connectionUrlInput.value = window.location.href;
+            statusElement.textContent = 'Для присоединения к игре выберите цвет';
+        }
+    }
+    
+    // Запускаем проверку URL при загрузке
+    checkUrlForGameId();
+});
+</script>

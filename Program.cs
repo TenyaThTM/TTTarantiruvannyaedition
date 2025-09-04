@@ -1,10 +1,8 @@
-using TicTacToeGame.Services;
-
 var builder = WebApplication.CreateBuilder(args);
 
 // Добавляем сервисы в контейнер
 builder.Services.AddControllersWithViews();
-builder.Services.AddSingleton<GameService>();
+builder.Services.AddSingleton<TicTacToeGame.Services.GameService>();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {

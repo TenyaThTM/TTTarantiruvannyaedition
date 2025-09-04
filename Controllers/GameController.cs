@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
 using TicTacToeGame.Models;
+using TicTacToeGame;
 using TicTacToeGame.Services;
 
 namespace TicTacToeGame.Controllers
@@ -49,13 +50,17 @@ namespace TicTacToeGame.Controllers
             }
 
             var playerId = HttpContext.Session.Id;
-            var success = _gameService.AddPlayerToGame(request.GameId, playerId, request.Color, request.Name);
+            
+            // Автоматическое имя если не указано
+            var playerName = string.IsNullOrEmpty(request.Name) ? $"Игрок {request.Color}" : request.Name;
+            
+            var success = _gameService.AddPlayerToGame(request.GameId, playerId, request.Color, playerName);
             
             if (success)
             {
                 HttpContext.Session.SetInt32("GameId", request.GameId);
                 HttpContext.Session.SetString("PlayerColor", request.Color);
-                HttpContext.Session.SetString("PlayerName", request.Name);
+                HttpContext.Session.SetString("PlayerName", playerName);
                 return Json(new { success = true });
             }
             

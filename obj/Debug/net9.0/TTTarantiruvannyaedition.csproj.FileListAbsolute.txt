@@ -21,9 +21,7 @@
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/scopedcss/Pages/Shared/_Layout.cshtml.rz.scp.css
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/scopedcss/bundle/TTTarantiruvannyaedition.styles.css
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/scopedcss/projectbundle/TTTarantiruvannyaedition.bundle.scp.css
-/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/compressed/1fjp0khsil-b9sayid5wm.gz
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/compressed/30nwaq2mpb-61n19gt1b8.gz
-/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/compressed/i8pr37rdj6-xtxxf3hu2r.gz
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/compressed/dbzbwvltth-bqjiyaj88i.gz
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/compressed/7jp3gr3o8f-c2jlpeoesf.gz
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/compressed/nmizrtyycc-erw9l3u2r3.gz
@@ -94,3 +92,6 @@
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/TTTarantiruvannyaedition.pdb
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/TTTarantiruvannyaedition.genruntimeconfig.cache
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/ref/TTTarantiruvannyaedition.dll
+/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/TTTarantiruvannyaedition.sourcelink.json
+/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/compressed/1fjp0khsil-lwejugtluq.gz
+/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/compressed/kyannq1jhq-361sssi2r7.gz
