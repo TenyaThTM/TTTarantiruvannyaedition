@@ -21,6 +21,7 @@ namespace TicTacToeGame.Models
         public string Id { get; set; }
         public string Color { get; set; }
         public string Name { get; set; }
+        public bool IsReady { get; set; }
     }
 
     public class Cell
@@ -30,5 +31,15 @@ namespace TicTacToeGame.Models
         public bool Blocked { get; set; }
         public string Owner { get; set; }
         public int Progress { get; set; }
+    }
+
+    public class LobbyInfo
+    {
+        public int Id { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public int PlayerCount { get; set; }
+        public int MaxPlayers { get; set; } = 6;
+        public DateTime CreatedAt { get; set; }
     }
 }

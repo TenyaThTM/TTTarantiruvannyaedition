@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TTTarantiruvannyaedition")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6c65f747edcd72eee16ca6b08334d3866e3edc48")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9af220b65ebd8569c648569188e25da7aa63a016")]
 [assembly: System.Reflection.AssemblyProductAttribute("TTTarantiruvannyaedition")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TTTarantiruvannyaedition")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

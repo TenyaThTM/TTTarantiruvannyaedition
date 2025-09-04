@@ -8,29 +8,216 @@ namespace TicTacToeGame.Services
     public class GameService
     {
         private readonly List<GameState> _games = new List<GameState>();
+        private readonly List<Lobby> _lobbies = new List<Lobby>();
         private readonly object _lock = new object();
         private int _nextGameId = 1;
+        private int _nextLobbyId = 1;
 
-        public GameState CreateNewGame(int width, int height, int blockChance, int winLength, int captureProgress)
+        public Lobby CreateLobby(int width, int height, int blockChance, int winLength, int captureProgress)
         {
             lock (_lock)
             {
-                var game = new GameState
+                var lobby = new Lobby
                 {
-                    Id = _nextGameId++,
+                    Id = _nextLobbyId++,
                     Width = width,
                     Height = height,
                     BlockChance = blockChance,
                     WinLength = winLength,
                     CaptureProgress = captureProgress,
                     Players = new List<Player>(),
-                    CurrentPlayerIndex = 0,
-                    GameOver = false,
+                    Status = LobbyStatus.WaitingForPlayers,
                     CreatedAt = DateTime.Now
                 };
 
-                InitializeBoard(game);
-                _games.Add(game);
+                _lobbies.Add(lobby);
+                return lobby;
+            }
+        }
+
+       public GameState GetGame(int gameId)
+{
+    lock (_lock)
+    {
+        var game = _games.FirstOrDefault(g => g.Id == gameId);
+        if (game == null)
+        {
+            Console.WriteLine($"Game {gameId} not found");
+            return null;
+        }
+
+        // Проверяем, не завершена ли игра
+        if (game.GameOver)
+        {
+            Console.WriteLine($"Game {gameId} is already over");
+            return game;
+        }
+
+        return game;
+    }
+}
+
+public Lobby GetLobby(int lobbyId)
+{
+    lock (_lock)
+    {
+        var lobby = _lobbies.FirstOrDefault(l => l.Id == lobbyId);
+        if (lobby == null)
+        {
+            Console.WriteLine($"Lobby {lobbyId} not found");
+            return null;
+        }
+
+        // Проверяем, не устарело ли лобби
+        if (lobby.Status == LobbyStatus.Finished || 
+            (lobby.Status == LobbyStatus.GameStarted && lobby.CreatedAt < DateTime.Now.AddMinutes(-30)))
+        {
+            Console.WriteLine($"Lobby {lobbyId} is expired");
+            _lobbies.Remove(lobby);
+            return null;
+        }
+
+        return lobby;
+    }
+}
+
+        public bool JoinLobby(int lobbyId, string playerId, string color, string name)
+        {
+            lock (_lock)
+            {
+                var lobby = _lobbies.FirstOrDefault(l => l.Id == lobbyId);
+                if (lobby == null || lobby.Status != LobbyStatus.WaitingForPlayers)
+                    return false;
+
+                // Проверяем, не занят ли цвет
+                if (lobby.Players.Any(p => p.Color == color))
+                    return false;
+
+                // Проверяем, не присоединялся ли уже этот игрок
+                if (lobby.Players.Any(p => p.Id == playerId))
+                    return true; // Уже в лобби
+
+                lobby.Players.Add(new Player
+                {
+                    Id = playerId,
+                    Color = color,
+                    Name = name ?? $"Игрок {color}"
+                });
+
+                return true;
+            }
+        }
+
+        public bool StartGame(int lobbyId, string playerId)
+{
+    lock (_lock)
+    {
+        Console.WriteLine($"StartGame called: lobbyId={lobbyId}, playerId={playerId}");
+        
+        var lobby = _lobbies.FirstOrDefault(l => l.Id == lobbyId);
+        if (lobby == null)
+        {
+            Console.WriteLine("Lobby not found");
+            return false;
+        }
+        
+        Console.WriteLine($"Lobby status: {lobby.Status}, Players: {lobby.Players.Count}");
+        
+        if (lobby.Status != LobbyStatus.WaitingForPlayers)
+        {
+            Console.WriteLine("Lobby not in waiting state");
+            return false;
+        }
+
+        if (lobby.Players.Count < 2)
+        {
+            Console.WriteLine("Not enough players");
+            return false;
+        }
+
+        if (!lobby.Players.Any(p => p.Id == playerId))
+        {
+            Console.WriteLine("Player not in lobby");
+            return false;
+        }
+
+        // Создаем игру из лобби
+        var game = new GameState
+        {
+            Id = _nextGameId++,
+            Width = lobby.Width,
+            Height = lobby.Height,
+            BlockChance = lobby.BlockChance,
+            WinLength = lobby.WinLength,
+            CaptureProgress = lobby.CaptureProgress,
+            Players = new List<Player>(lobby.Players),
+            CurrentPlayerIndex = 0,
+            GameOver = false,
+            CreatedAt = DateTime.Now
+        };
+
+        InitializeBoard(game);
+        _games.Add(game);
+
+        // Меняем статус лобби
+        lobby.Status = LobbyStatus.GameStarted;
+        lobby.GameId = game.Id;
+
+        Console.WriteLine($"Game started successfully. GameId: {game.Id}");
+        return true;
+    }
+}
+public void CleanupOldSessions()
+{
+    lock (_lock)
+    {
+        // Удаляем старые завершенные игры (старше 1 часа)
+        _games.RemoveAll(g => g.GameOver && g.CreatedAt < DateTime.Now.AddHours(-1));
+        
+        // Удаляем старые лобби (старше 2 часов)
+        _lobbies.RemoveAll(l => l.CreatedAt < DateTime.Now.AddHours(-2));
+        
+        // Удаляем лобби без игроков (старше 30 минут)
+        _lobbies.RemoveAll(l => l.Players.Count == 0 && l.CreatedAt < DateTime.Now.AddMinutes(-30));
+    }
+}
+        public GameState MakeMove(int gameId, int x, int y, string playerId)
+        {
+            lock (_lock)
+            {
+                var game = _games.FirstOrDefault(g => g.Id == gameId);
+                if (game == null || game.GameOver || game.Players.Count == 0)
+                    return null;
+
+                var currentPlayer = game.Players[game.CurrentPlayerIndex];
+                if (currentPlayer.Id != playerId)
+                    return null;
+
+                if (x < 0 || x >= game.Width || y < 0 || y >= game.Height)
+                    return null;
+
+                var cell = game.Board[y, x];
+                if (cell.Blocked || (cell.Owner != null && cell.Owner != playerId))
+                    return null;
+
+                if (cell.Owner == playerId)
+                    return game;
+
+                cell.Progress++;
+
+                if (cell.Progress >= game.CaptureProgress)
+                {
+                    cell.Owner = playerId;
+                    cell.Progress = game.CaptureProgress;
+
+                    if (CheckWinCondition(game, x, y, playerId))
+                    {
+                        game.GameOver = true;
+                        game.Winner = playerId;
+                    }
+                }
+
+                game.CurrentPlayerIndex = (game.CurrentPlayerIndex + 1) % game.Players.Count;
                 return game;
             }
         }
@@ -56,77 +243,13 @@ namespace TicTacToeGame.Services
             }
         }
 
-        public GameState GetGame(int gameId)
-        {
-            lock (_lock)
-            {
-                return _games.FirstOrDefault(g => g.Id == gameId);
-            }
-        }
-
-        public bool AddPlayerToGame(int gameId, string playerId, string color, string name)
-        {
-            lock (_lock)
-            {
-                var game = _games.FirstOrDefault(g => g.Id == gameId);
-                if (game == null || game.Players.Any(p => p.Color == color))
-                    return false;
-
-                game.Players.Add(new Player { Id = playerId, Color = color, Name = name });
-                return true;
-            }
-        }
-
-        public GameState MakeMove(int gameId, int x, int y, string playerId)
-        {
-            lock (_lock)
-            {
-                var game = _games.FirstOrDefault(g => g.Id == gameId);
-                if (game == null || game.GameOver || game.Players.Count == 0)
-                    return null;
-
-                var currentPlayer = game.Players[game.CurrentPlayerIndex];
-                if (currentPlayer.Id != playerId)
-                    return null;
-
-                if (x < 0 || x >= game.Width || y < 0 || y >= game.Height)
-                    return null;
-
-                var cell = game.Board[y, x];
-                if (cell.Blocked || (cell.Owner != null && cell.Owner != playerId))
-                    return null;
-
-                if (cell.Owner == playerId)
-                    return game; // Уже захвачена этим игроком
-
-                cell.Progress++;
-
-                if (cell.Progress >= game.CaptureProgress)
-                {
-                    cell.Owner = playerId;
-                    cell.Progress = game.CaptureProgress;
-
-                    if (CheckWinCondition(game, x, y, playerId))
-                    {
-                        game.GameOver = true;
-                        game.Winner = playerId;
-                    }
-                }
-
-                // Переход хода
-                game.CurrentPlayerIndex = (game.CurrentPlayerIndex + 1) % game.Players.Count;
-
-                return game;
-            }
-        }
-
         private bool CheckWinCondition(GameState game, int x, int y, string playerId)
         {
             // Проверка горизонтали
             int count = 0;
             for (int i = 0; i < game.Width; i++)
             {
-                if (game.Board[y, i].Owner == playerId)
+                if (game.Board[y, i]?.Owner == playerId)
                 {
                     count++;
                     if (count >= game.WinLength) return true;
@@ -141,45 +264,7 @@ namespace TicTacToeGame.Services
             count = 0;
             for (int i = 0; i < game.Height; i++)
             {
-                if (game.Board[i, x].Owner == playerId)
-                {
-                    count++;
-                    if (count >= game.WinLength) return true;
-                }
-                else
-                {
-                    count = 0;
-                }
-            }
-
-            // Проверка диагонали (слева направо)
-            count = 0;
-            int minXY = Math.Min(x, y);
-            int startX = x - minXY;
-            int startY = y - minXY;
-            
-            for (int i = 0; i < Math.Min(game.Width - startX, game.Height - startY); i++)
-            {
-                if (game.Board[startY + i, startX + i].Owner == playerId)
-                {
-                    count++;
-                    if (count >= game.WinLength) return true;
-                }
-                else
-                {
-                    count = 0;
-                }
-            }
-
-            // Проверка диагонали (справа налево)
-            count = 0;
-            int minXGameHeightY = Math.Min(x, game.Height - 1 - y);
-            startX = x - minXGameHeightY;
-            startY = y + minXGameHeightY;
-            
-            for (int i = 0; i < Math.Min(game.Width - startX, startY + 1); i++)
-            {
-                if (game.Board[startY - i, startX + i].Owner == playerId)
+                if (game.Board[i, x]?.Owner == playerId)
                 {
                     count++;
                     if (count >= game.WinLength) return true;
@@ -193,24 +278,43 @@ namespace TicTacToeGame.Services
             return false;
         }
 
-        public List<GameState> GetAllGames()
+        public List<Lobby> GetAllLobbies()
         {
             lock (_lock)
             {
-                return _games.ToList();
+                return _lobbies
+                    .Where(l => l.Status == LobbyStatus.WaitingForPlayers)
+                    .ToList();
             }
         }
 
-        public void RemoveGame(int gameId)
+        public void RemoveLobby(int lobbyId)
         {
             lock (_lock)
             {
-                var game = _games.FirstOrDefault(g => g.Id == gameId);
-                if (game != null)
-                {
-                    _games.Remove(game);
-                }
+                _lobbies.RemoveAll(l => l.Id == lobbyId);
             }
         }
+    }
+
+    public class Lobby
+    {
+        public int Id { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public int BlockChance { get; set; }
+        public int WinLength { get; set; }
+        public int CaptureProgress { get; set; }
+        public List<Player> Players { get; set; } = new List<Player>();
+        public LobbyStatus Status { get; set; }
+        public int? GameId { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
+    public enum LobbyStatus
+    {
+        WaitingForPlayers,
+        GameStarted,
+        Finished
     }
 }
