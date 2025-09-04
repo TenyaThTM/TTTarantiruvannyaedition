@@ -1,0 +1,58 @@
+@{
+    ViewData["Title"] = "Шуточные крестики-нолики";
+}
+
+<div class="container">
+    <h1>Шуточные крестики-нолики</h1>
+    
+    <div class="controls">
+        <h2>Параметры игры</h2>
+        <div class="param-group">
+            <label for="n">Ширина поля (n):</label>
+            <input type="number" id="n" min="3" max="10" value="5">
+        </div>
+        <div class="param-group">
+            <label for="b">Высота поля (b):</label>
+            <input type="number" id="b" min="3" max="10" value="5">
+        </div>
+        <div class="param-group">
+            <label for="d">Шанс блокировки (%):</label>
+            <input type="number" id="d" min="0" max="100" value="15">
+        </div>
+        <div class="param-group">
+            <label for="t">Длина линии для победы:</label>
+            <input type="number" id="t" min="3" max="5" value="4">
+        </div>
+        <div class="param-group">
+            <label for="u">Прогресс захвата (ходов):</label>
+            <input type="number" id="u" min="1" max="5" value="2">
+        </div>
+        
+        <h2>Выберите цвет для игры</h2>
+        <div class="token-selection">
+            <div class="token" style="background-color: #FF5252;" data-color="#FF5252"></div>
+            <div class="token" style="background-color: #FFEB3B;" data-color="#FFEB3B"></div>
+            <div class="token" style="background-color: #4CAF50;" data-color="#4CAF50"></div>
+            <div class="token" style="background-color: #2196F3;" data-color="#2196F3"></div>
+            <div class="token" style="background-color: #9C27B0;" data-color="#9C27B0"></div>
+            <div class="token" style="background-color: #FF9800;" data-color="#FF9800"></div>
+        </div>
+        
+        <div class="form-group">
+            <label for="playerName">Ваше имя:</label>
+            <input type="text" id="playerName" placeholder="Введите ваше имя">
+        </div>
+        
+        <div class="buttons">
+            <button id="start">Начать игру</button>
+            <button id="restart" disabled>Рестарт</button>
+        </div>
+    </div>
+    
+    <div class="game-board" id="board"></div>
+    <div class="status" id="status">Выберите цвет и нажмите "Начать игру"</div>
+</div>
+
+@section Scripts {
+    <script src="~/js/game.js"></script>
+}
