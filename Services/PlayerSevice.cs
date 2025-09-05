@@ -40,23 +40,23 @@ namespace TicTacToeGame.Services
 
         if (session != null && _players.TryGetValue(session.PlayerId, out player))
         {
-            // Обновляем существующего игрока
+            // ОБНОВЛЯЕМ данные существующего игрока
             if (!string.IsNullOrEmpty(name)) player.Name = name;
             if (!string.IsNullOrEmpty(color)) player.Color = color;
             player.LastSeen = DateTime.Now;
         }
         else
         {
-            // Создаем нового игрока
+            // СОЗДАЕМ нового игрока
             player = new Player 
             { 
+                Id = Guid.NewGuid().ToString(),
                 Name = name ?? "Игрок", 
                 SessionId = sessionId,
                 Color = color ?? GetRandomColor()
             };
             _players[player.Id] = player;
             
-            // Создаем сессию
             _sessions[sessionId] = new PlayerSession
             {
                 SessionId = sessionId,
@@ -65,7 +65,6 @@ namespace TicTacToeGame.Services
             };
         }
 
-        // Обрабатываем аватар
         if (avatarFile != null && avatarFile.Length > 0)
         {
             player.AvatarPath = SaveAvatar(avatarFile, player.Id);

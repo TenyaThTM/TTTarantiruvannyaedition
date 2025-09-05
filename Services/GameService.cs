@@ -23,11 +23,10 @@ namespace TicTacToeGame.Services
 {
     lock (_lock)
     {
-        // Создаем игрока если не существует
         var creator = _playerService.GetPlayerBySession(creatorSessionId);
         if (creator == null)
         {
-            // Автоматически создаем игрока с default именем
+            // СОЗДАЕМ ИГРОКА ЧЕРЕЗ PLAYER SERVICE, А НЕ ВРУЧНУЮ
             creator = _playerService.CreateOrUpdatePlayer(creatorSessionId, "Игрок", null, "#FF5252");
         }
 
@@ -42,10 +41,9 @@ namespace TicTacToeGame.Services
             Players = new List<Player>(),
             Status = LobbyStatus.WaitingForPlayers,
             CreatedAt = DateTime.Now,
-            CreatorId = creator.Id
         };
 
-        // Добавляем создателя в лобби
+        // ДОБАВЛЯЕМ СУЩЕСТВУЮЩЕГО ИГРОКА, А НЕ СОЗДАЕМ НОВОГО
         lobby.Players.Add(creator);
 
         _lobbies.Add(lobby);
@@ -117,73 +115,62 @@ public bool LobbyExists(int lobbyId)
         if (lobby == null || lobby.Status != LobbyStatus.WaitingForPlayers)
             return false;
 
+        // ПОЛУЧАЕМ ИГРОКА ЧЕРЕЗ PLAYER SERVICE (сохраняет данные)
         var player = _playerService.GetPlayerBySession(sessionId);
         if (player == null)
         {
-            // Создаем игрока автоматически
             player = _playerService.CreateOrUpdatePlayer(sessionId, "Игрок", null, GetNextAvailableColor(lobby));
         }
 
-        // Проверяем, не присоединялся ли уже этот игрок
-        if (lobby.Players.Any(p => p.SessionId == sessionId))
+        if (lobby.Players.Any(p => p.SessionId == sessionId || p.Id == player.Id))
             return true;
 
-        // Клонируем игрока для лобби (чтобы избежать ссылочных проблем)
-        var lobbyPlayer = new Player 
-        { 
-            Id = player.Id,
-            SessionId = player.SessionId,
-            Name = player.Name,
-            AvatarPath = player.AvatarPath,
-            Color = player.Color,
-            CreatedAt = player.CreatedAt,
-            LastSeen = DateTime.Now
-        };
-
-        lobby.Players.Add(lobbyPlayer);
+        // ИСПОЛЬЗУЕМ СУЩЕСТВУЮЩЕГО ИГРОКА, А НЕ СОЗДАЕМ КЛОНА
+        lobby.Players.Add(player);
         return true;
     }
 }
 
 
         public bool StartGame(int lobbyId, string sessionId)
+{
+    lock (_lock)
+    {
+        var lobby = _lobbies.FirstOrDefault(l => l.Id == lobbyId);
+        if (lobby == null || lobby.Status != LobbyStatus.WaitingForPlayers)
+            return false;
+
+        var player = _playerService.GetPlayerBySession(sessionId);
+        if (player == null || !lobby.Players.Any(p => p.Id == player.Id))
+            return false;
+
+        // УБИРАЕМ проверку количества игроков здесь - она будет в другом месте
+        // if (lobby.Players.Count < 2)
+        //     return false;
+
+        var game = new GameState
         {
-            lock (_lock)
-            {
-                var lobby = _lobbies.FirstOrDefault(l => l.Id == lobbyId);
-                if (lobby == null || lobby.Status != LobbyStatus.WaitingForPlayers)
-                    return false;
+            Id = _nextGameId++,
+            Width = lobby.Width,           
+            Height = lobby.Height,        
+            BlockChance = lobby.BlockChance,
+            WinLength = lobby.WinLength,
+            CaptureProgress = lobby.CaptureProgress,
+            Players = new List<Player>(lobby.Players),
+            CurrentPlayerIndex = 0,
+            GameOver = false,
+            CreatedAt = DateTime.Now
+        };
 
-                var player = _playerService.GetPlayerBySession(sessionId);
-                if (player == null || !lobby.Players.Any(p => p.Id == player.Id))
-                    return false;
+        InitializeBoard(game);
+        _games.Add(game);
 
-                if (lobby.Players.Count < 2)
-                    return false;
+        lobby.Status = LobbyStatus.GameStarted;
+        lobby.GameId = game.Id;
 
-                var game = new GameState
-                {
-                    Id = _nextGameId++,
-                    Width = lobby.Width,
-                    Height = lobby.Height,
-                    BlockChance = lobby.BlockChance,
-                    WinLength = lobby.WinLength,
-                    CaptureProgress = lobby.CaptureProgress,
-                    Players = new List<Player>(lobby.Players),
-                    CurrentPlayerIndex = 0,
-                    GameOver = false,
-                    CreatedAt = DateTime.Now
-                };
-
-                InitializeBoard(game);
-                _games.Add(game);
-
-                lobby.Status = LobbyStatus.GameStarted;
-                lobby.GameId = game.Id;
-
-                return true;
-            }
-        }
+        return true;
+    }
+}
 private string GetNextAvailableColor(Lobby lobby)
 {
     var usedColors = lobby.Players
@@ -211,46 +198,48 @@ public void CleanupOldSessions()
         _lobbies.RemoveAll(l => l.Players.Count == 0 && l.CreatedAt < DateTime.Now.AddMinutes(-30));
     }
 }
-        public GameState MakeMove(int gameId, int x, int y, string playerId)
+        public GameState MakeMove(int gameId, int x, int y, string sessionId) // Меняем playerId на sessionId
+{
+    lock (_lock)
+    {
+        var game = _games.FirstOrDefault(g => g.Id == gameId);
+        if (game == null || game.GameOver || game.Players.Count == 0)
+            return null;
+
+        var currentPlayer = game.Players[game.CurrentPlayerIndex];
+        
+        // ПРАВИЛЬНО: сравниваем sessionId с currentPlayer.SessionId
+        if (currentPlayer.SessionId != sessionId) // ← ИСПРАВЛЕНИЕ
+            return null;
+
+        if (x < 0 || x >= game.Width || y < 0 || y >= game.Height)
+            return null;
+
+        var cell = game.Board[y, x];
+        if (cell.Blocked || (cell.Owner != null && cell.Owner != currentPlayer.Id)) // Исправляем сравнение
+            return null;
+
+        if (cell.Owner == currentPlayer.Id) // Исправляем сравнение
+            return game;
+
+        cell.Progress++;
+
+        if (cell.Progress >= game.CaptureProgress)
         {
-            lock (_lock)
+            cell.Owner = currentPlayer.Id; // Сохраняем ID игрока, а не sessionId
+            cell.Progress = game.CaptureProgress;
+
+            if (CheckWinCondition(game, x, y, currentPlayer.Id)) // Передаем ID игрока
             {
-                var game = _games.FirstOrDefault(g => g.Id == gameId);
-                if (game == null || game.GameOver || game.Players.Count == 0)
-                    return null;
-
-                var currentPlayer = game.Players[game.CurrentPlayerIndex];
-                if (currentPlayer.Id != playerId)
-                    return null;
-
-                if (x < 0 || x >= game.Width || y < 0 || y >= game.Height)
-                    return null;
-
-                var cell = game.Board[y, x];
-                if (cell.Blocked || (cell.Owner != null && cell.Owner != playerId))
-                    return null;
-
-                if (cell.Owner == playerId)
-                    return game;
-
-                cell.Progress++;
-
-                if (cell.Progress >= game.CaptureProgress)
-                {
-                    cell.Owner = playerId;
-                    cell.Progress = game.CaptureProgress;
-
-                    if (CheckWinCondition(game, x, y, playerId))
-                    {
-                        game.GameOver = true;
-                        game.Winner = playerId;
-                    }
-                }
-
-                game.CurrentPlayerIndex = (game.CurrentPlayerIndex + 1) % game.Players.Count;
-                return game;
+                game.GameOver = true;
+                game.Winner = currentPlayer.Id; // Сохраняем ID победителя
             }
         }
+
+        game.CurrentPlayerIndex = (game.CurrentPlayerIndex + 1) % game.Players.Count;
+        return game;
+    }
+}
 
         private void InitializeBoard(GameState game)
         {
@@ -274,39 +263,69 @@ public void CleanupOldSessions()
         }
 
         private bool CheckWinCondition(GameState game, int x, int y, string playerId)
+{
+    // Проверка горизонтали
+    if (CheckLine(game, y, 0, 0, 1, playerId)) return true;
+    
+    // Проверка вертикали  
+    if (CheckLine(game, 0, x, 1, 0, playerId)) return true;
+    
+    // Проверка диагонали ↗
+    if (CheckDiagonal(game, x, y, 1, 1, playerId)) return true;
+    
+    // Проверка диагонали ↖
+    if (CheckDiagonal(game, x, y, -1, 1, playerId)) return true;
+    
+    return false;
+}
+        private bool CheckLine(GameState game, int startY, int startX, int dy, int dx, string playerId)
+{
+    int count = 0;
+    int x = startX;
+    int y = startY;
+    
+    while (x >= 0 && x < game.Width && y >= 0 && y < game.Height)
+    {
+        if (game.Board[y, x]?.Owner == playerId)
         {
-            // Проверка горизонтали
-            int count = 0;
-            for (int i = 0; i < game.Width; i++)
-            {
-                if (game.Board[y, i]?.Owner == playerId)
-                {
-                    count++;
-                    if (count >= game.WinLength) return true;
-                }
-                else
-                {
-                    count = 0;
-                }
-            }
-
-            // Проверка вертикали
-            count = 0;
-            for (int i = 0; i < game.Height; i++)
-            {
-                if (game.Board[i, x]?.Owner == playerId)
-                {
-                    count++;
-                    if (count >= game.WinLength) return true;
-                }
-                else
-                {
-                    count = 0;
-                }
-            }
-
-            return false;
+            count++;
+            if (count >= game.WinLength) return true;
         }
+        else
+        {
+            count = 0;
+        }
+        x += dx;
+        y += dy;
+    }
+    return false;
+}
+
+private bool CheckDiagonal(GameState game, int centerX, int centerY, int dirX, int dirY, string playerId)
+{
+    int count = 0;
+    
+    // Проверяем в обе стороны от центральной точки
+    for (int i = -game.WinLength + 1; i < game.WinLength; i++)
+    {
+        int x = centerX + i * dirX;
+        int y = centerY + i * dirY;
+        
+        if (x >= 0 && x < game.Width && y >= 0 && y < game.Height)
+        {
+            if (game.Board[y, x]?.Owner == playerId)
+            {
+                count++;
+                if (count >= game.WinLength) return true;
+            }
+            else
+            {
+                count = 0;
+            }
+        }
+    }
+    return false;
+}
 
         public List<Lobby> GetAllLobbies()
         {
@@ -336,10 +355,9 @@ public void CleanupOldSessions()
         public int WinLength { get; set; }
         public int CaptureProgress { get; set; }
         public List<Player> Players { get; set; } = new List<Player>();
-        public LobbyStatus Status { get; set; }
+        public LobbyStatus Status { get; set; } = LobbyStatus.WaitingForPlayers;
         public int? GameId { get; set; }
-        public DateTime CreatedAt { get; set; }
-        public string CreatorId { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
     }
 
     public enum LobbyStatus

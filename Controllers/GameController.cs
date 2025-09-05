@@ -9,6 +9,7 @@ namespace TicTacToeGame.Controllers
     {
         private readonly GameService _gameService;
         private readonly PlayerService _playerService;
+        private static readonly Random _random = new Random(); // Статический Random
 
         public GameController(GameService gameService, PlayerService playerService)
         {
@@ -89,6 +90,32 @@ public IActionResult JoinLobby([FromBody] JoinLobbyRequest request)
             return Json(new { success = false, error = "Invalid request" });
 
         var sessionId = HttpContext.Session.Id;
+        
+        // Убеждаемся что игрок существует
+        var player = _playerService.GetPlayerBySession(sessionId);
+        if (player == null)
+        {
+            // Создаем игрока автоматически
+            player = _playerService.CreateOrUpdatePlayer(sessionId, "Игрок", null, request.Color ?? "#FF5252");
+        }
+
+        // Получаем лобби для проверок
+        var lobby = _gameService.GetLobby(request.LobbyId);
+        if (lobby == null)
+            return Json(new { success = false, error = "Лобби не найдено" });
+
+        // Проверяем статус лобби
+        if (lobby.Status == LobbyStatus.GameStarted)
+            return Json(new { success = false, error = "Игра в этом лобби уже началась" });
+
+        // Проверяем количество игроков
+        if (lobby.Players.Count >= 6) // MaxPlayers = 6
+            return Json(new { success = false, error = "Лобби заполнено" });
+
+        // Проверяем, не присоединен ли уже игрок к лобби
+        if (lobby.Players.Any(p => p.SessionId == sessionId || p.Id == player.Id))
+            return Json(new { success = false, error = "Вы уже в этом лобби" });
+
         var success = _gameService.JoinLobby(request.LobbyId, sessionId);
 
         if (success)
@@ -96,14 +123,14 @@ public IActionResult JoinLobby([FromBody] JoinLobbyRequest request)
             HttpContext.Session.SetInt32("LobbyId", request.LobbyId);
             HttpContext.Session.SetString("IsLobbyCreator", "false");
             
-            // Немедленно возвращаем состояние лобби
-            var lobby = _gameService.GetLobby(request.LobbyId);
+            lobby = _gameService.GetLobby(request.LobbyId);
             return Json(new { 
                 success = true,
                 lobby = new {
                     id = lobby.Id,
                     players = lobby.Players,
-                    status = lobby.Status
+                    status = lobby.Status.ToString(),
+                    playerCount = lobby.Players.Count
                 }
             });
         }
@@ -142,73 +169,100 @@ public IActionResult GetSessionId()
     }
 }
         [HttpPost]
-        public IActionResult StartGame([FromBody] StartGameRequest request)
+public IActionResult StartGame([FromBody] StartGameRequest request)
+{
+    try
+    {
+        var lobbyId = HttpContext.Session.GetInt32("LobbyId");
+        var sessionId = HttpContext.Session.Id;
+
+        if (!lobbyId.HasValue)
+            return Json(new { success = false, error = "No lobby found" });
+
+        // ПРОВЕРЯЕМ КОЛИЧЕСТВО ИГРОКОВ ПЕРЕД ЗАПУСКОМ
+        var lobby = _gameService.GetLobby(lobbyId.Value);
+        if (lobby == null)
+            return Json(new { success = false, error = "Lobby not found" });
+
+        if (lobby.Players.Count < 2)
+            return Json(new { success = false, error = "Cannot start game. Need at least 2 players." });
+
+        var success = _gameService.StartGame(lobbyId.Value, sessionId);
+
+        if (success)
         {
-            try
+            lobby = _gameService.GetLobby(lobbyId.Value);
+            if (lobby != null && lobby.GameId.HasValue)
             {
-                var lobbyId = HttpContext.Session.GetInt32("LobbyId");
-                var playerId = HttpContext.Session.Id;
-
-                if (!lobbyId.HasValue)
-                    return Json(new { success = false, error = "No lobby found" });
-
-                var success = _gameService.StartGame(lobbyId.Value, playerId);
-
-                if (success)
-                {
-                    var lobby = _gameService.GetLobby(lobbyId.Value);
-                    if (lobby != null && lobby.GameId.HasValue)
-                    {
-                        HttpContext.Session.SetInt32("GameId", lobby.GameId.Value);
-                        return Json(new { success = true, gameId = lobby.GameId });
-                    }
-                }
-
-                return Json(new { success = false, error = "Cannot start game. Need at least 2 players." });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { success = false, error = ex.Message });
+                HttpContext.Session.SetInt32("GameId", lobby.GameId.Value);
+                return Json(new { success = true, gameId = lobby.GameId });
             }
         }
 
+        return Json(new { success = false, error = "Failed to start game" });
+    }
+    catch (Exception ex)
+    {
+        return Json(new { success = false, error = ex.Message });
+    }
+}
         [HttpPost]
-        public IActionResult MakeMove([FromBody] MoveRequest request)
+public IActionResult MakeMove([FromBody] MoveRequest request)
+{
+    try
+    {
+        if (request == null)
+            return Json(new { success = false, error = "Invalid move" });
+
+        var gameId = HttpContext.Session.GetInt32("GameId");
+        var sessionId = HttpContext.Session.Id; // Получаем sessionId
+
+        if (!gameId.HasValue)
+            return Json(new { success = false, error = "No game found" });
+
+        // ПЕРЕДАЕМ sessionId ВМЕСТО playerId
+        var game = _gameService.MakeMove(gameId.Value, request.X, request.Y, sessionId);
+
+        if (game == null)
+            return Json(new { success = false, error = "Invalid move" });
+
+        return Json(new
         {
-            try
-            {
-                if (request == null)
-                    return Json(new { success = false, error = "Invalid move" });
-
-                var gameId = HttpContext.Session.GetInt32("GameId");
-                var playerId = HttpContext.Session.Id;
-
-                if (!gameId.HasValue)
-                    return Json(new { success = false, error = "No game found" });
-
-                var game = _gameService.MakeMove(gameId.Value, request.X, request.Y, playerId);
-
-                if (game == null)
-                    return Json(new { success = false, error = "Invalid move" });
-
-                return Json(new
-                {
-                    success = true,
-                    gameOver = game.GameOver,
-                    winner = game.Winner,
-                    currentPlayer = game.Players[game.CurrentPlayerIndex]?.Color
-                });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { success = false, error = ex.Message });
-            }
-        }
+            success = true,
+            gameOver = game.GameOver,
+            winner = game.Winner,
+            currentPlayer = game.Players[game.CurrentPlayerIndex]?.Color
+        });
+    }
+    catch (Exception ex)
+    {
+        return Json(new { success = false, error = ex.Message });
+    }
+}
         [HttpPost]
 public IActionResult LeaveLobby()
 {
     try
     {
+        var lobbyId = HttpContext.Session.GetInt32("LobbyId");
+        var sessionId = HttpContext.Session.Id;
+
+        if (lobbyId.HasValue)
+        {
+            // Удаляем игрока из лобби
+            var lobby = _gameService.GetLobby(lobbyId.Value);
+            if (lobby != null)
+            {
+                lobby.Players.RemoveAll(p => p.SessionId == sessionId);
+                
+                // Если лобби пустое, удаляем его
+                if (lobby.Players.Count == 0)
+                {
+                    _gameService.RemoveLobby(lobbyId.Value);
+                }
+            }
+        }
+
         HttpContext.Session.Remove("LobbyId");
         HttpContext.Session.Remove("GameId");
         HttpContext.Session.Remove("PlayerColor");
@@ -237,117 +291,83 @@ public IActionResult ResetSession()
     }
 }
         [HttpGet]
-        public IActionResult GameState()
+public IActionResult GameState()
+{
+    try
+    {
+        var gameId = HttpContext.Session.GetInt32("GameId");
+        if (!gameId.HasValue)
+            return Json(new { error = "No game found" });
+
+        var game = _gameService.GetGame(gameId.Value);
+        if (game == null)
         {
-            try
+            HttpContext.Session.Remove("GameId");
+            return Json(new { error = "Game not found" });
+        }
+
+        var sessionId = HttpContext.Session.Id;
+        
+        // Упрощенная проверка: игрок должен быть в списке участников игры
+        var currentPlayer = game.Players.FirstOrDefault(p => p.SessionId == sessionId);
+        if (currentPlayer == null)
+        {
+            // Проверяем по постоянному ID игрока (если реализовано)
+            var player = _playerService.GetPlayerBySession(sessionId);
+            if (player != null)
             {
-                var gameId = HttpContext.Session.GetInt32("GameId");
-                if (!gameId.HasValue)
-                    return Json(new { error = "No game found" });
-
-                var game = _gameService.GetGame(gameId.Value);
-                if (game == null)
-                {
-                    HttpContext.Session.Remove("GameId");
-                    return Json(new { error = "Game not found" });
-                }
-
-                var sessionId = HttpContext.Session.Id;
-                Console.WriteLine($"Checking player session {sessionId} in game {gameId}");
-                var currentPlayer = game.Players.FirstOrDefault(p => p.SessionId == sessionId);
-                if (currentPlayer == null)
-                {
-                    Console.WriteLine($"Player session {sessionId} not found in game {gameId}");
-
-                    // Пытаемся найти или создать игрока
-                    var player = _playerService.GetPlayerBySession(sessionId);
-                    if (player == null)
-                    {
-                        player = _playerService.CreateOrUpdatePlayer(sessionId, "Игрок", null, GetRandomColor());
-                    }
-
-                    // Проверяем по Id игрока
-                    var existingPlayer = game.Players.FirstOrDefault(p => p.Id == player.Id);
-                    if (existingPlayer != null)
-                    {
-                        // Обновляем sessionId у существующего игрока
-                        existingPlayer.SessionId = sessionId;
-                        Console.WriteLine($"Updated player session: {player.Id} -> {sessionId}");
-                    }
-                    else
-                    {
-                        // Добавляем игрока в игру
-                        game.Players.Add(new Player
-                        {
-                            Id = player.Id,
-                            SessionId = player.SessionId,
-                            Name = player.Name,
-                            AvatarPath = player.AvatarPath,
-                            Color = player.Color
-                        });
-                        Console.WriteLine($"Added player to game: {player.Id}");
-                    }
-                }
-                // Проверяем по SessionId
-                if (!game.Players.Any(p => p.SessionId == sessionId))
-                {
-                    Console.WriteLine($"Player session {sessionId} not found in game {gameId}");
-
-                    // Пытаемся найти игрока через сервис
-                    var player = _playerService.GetPlayerBySession(sessionId);
-                    if (player == null)
-                    {
-                        HttpContext.Session.Remove("GameId");
-                        return Json(new { error = "Player not found" });
-                    }
-
-                    // Проверяем по Id игрока
-                    if (!game.Players.Any(p => p.Id == player.Id))
-                    {
-                        HttpContext.Session.Remove("GameId");
-                        return Json(new { error = "Player not in this game" });
-                    }
-
-                    Console.WriteLine($"Player found by ID: {player.Id}");
-                }
-
-                // Преобразуем двумерный массив в список
-                var cells = new List<object>();
-                for (int y = 0; y < game.Height; y++)
-                {
-                    for (int x = 0; x < game.Width; x++)
-                    {
-                        var cell = game.Board[y, x];
-                        cells.Add(new
-                        {
-                            x = cell.X,
-                            y = cell.Y,
-                            blocked = cell.Blocked,
-                            owner = cell.Owner,
-                            progress = cell.Progress
-                        });
-                    }
-                }
-
-                return Json(new
-                {
-                    width = game.Width,
-                    height = game.Height,
-                    captureProgress = game.CaptureProgress,
-                    players = game.Players,
-                    currentPlayerIndex = game.CurrentPlayerIndex,
-                    currentPlayer = game.Players.Count > 0 ? game.Players[game.CurrentPlayerIndex]?.Color : null,
-                    gameOver = game.GameOver,
-                    winner = game.Winner,
-                    cells = cells
+                currentPlayer = game.Players.FirstOrDefault(p => p.Id == player.Id);
+            }
+            
+            if (currentPlayer == null)
+            {
+                return Json(new { 
+                    error = "Player not in this game",
+                    redirectToLobby = true 
                 });
             }
-            catch (Exception ex)
+            
+            // Обновляем sessionId для существующего игрока
+            currentPlayer.SessionId = sessionId;
+        }
+
+        // Преобразуем двумерный массив в список
+        var cells = new List<object>();
+        for (int y = 0; y < game.Height; y++)
+        {
+            for (int x = 0; x < game.Width; x++)
             {
-                Console.WriteLine($"GameState error: {ex}");
-                return Json(new { error = ex.Message });
+                var cell = game.Board[y, x];
+                cells.Add(new
+                {
+                    x = cell.X,
+                    y = cell.Y,
+                    blocked = cell.Blocked,
+                    owner = cell.Owner,
+                    progress = cell.Progress
+                });
             }
         }
+
+        return Json(new
+        {
+            width = game.Width,
+            height = game.Height,
+            captureProgress = game.CaptureProgress,
+            players = game.Players,
+            currentPlayerIndex = game.CurrentPlayerIndex,
+            currentPlayer = game.Players.Count > 0 ? game.Players[game.CurrentPlayerIndex]?.Color : null,
+            gameOver = game.GameOver,
+            winner = game.Winner,
+            cells = cells
+        });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"GameState error: {ex}");
+        return Json(new { error = ex.Message });
+    }
+}
         [HttpGet]
 public IActionResult GetMySessionId()
 {
@@ -363,7 +383,7 @@ public IActionResult GetMySessionId()
 private string GetRandomColor()
         {
             var colors = new[] { "#FF5252", "#FFEB3B", "#4CAF50", "#2196F3", "#9C27B0", "#FF9800" };
-            return colors[new Random().Next(colors.Length)];
+            return colors[_random.Next(colors.Length)]; // Используем статический _random
         }
 [HttpGet]
 public IActionResult CheckGameStarted()

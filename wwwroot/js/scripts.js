@@ -2,8 +2,10 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Game script loaded');
     
-    // Простая инициализация
-    getMySessionId().then(() => {
+    // АВТОМАТИЧЕСКИ СОЗДАЕМ ИГРОКА ПРИ ЗАГРУЗКЕ
+    getMySessionId().then(async () => {
+        await ensurePlayerExists(); // ПЕРЕМЕЩАЕМ СЮДА - сначала создаем игрока
+        await loadPlayer(); // потом загружаем данные
         showScreen('main');
     }).catch(error => {
         console.error('Initialization error:', error);
@@ -32,7 +34,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const tokenElements = document.querySelectorAll('.token');
     const playersListElement = document.getElementById('players');
     const gamePlayersElement = document.getElementById('gamePlayers');
-    const connectionUrlInput = document.getElementById('connectionUrl');
     const copyUrlButton = document.getElementById('copyUrl');
     const lobbiesList = document.getElementById('lobbiesList');
     const startGameSection = document.getElementById('startGameSection');
@@ -44,7 +45,6 @@ const saveProfileBtn = document.getElementById('saveProfile');
 const playerNameInput = document.getElementById('playerName');
 const avatarUpload = document.getElementById('avatarUpload');
 const avatarPreview = document.getElementById('avatarPreview');
-const forceCheckGameBtn = document.getElementById('forceCheckGame');
 const gameIdDisplay = document.getElementById('gameIdDisplay');
 
     let selectedColor = null;
@@ -54,17 +54,12 @@ const gameIdDisplay = document.getElementById('gameIdDisplay');
     let isLobbyCreator = false;
     let pollInterval = null;
     let currentProfile = null;
+    let isPageClosing = false;
+    let currentPlayer = null;
+    let lastGameState = null;
 
     // Генерируем базовый URL
     const baseUrl = window.location.origin;
-    connectionUrlInput.value = baseUrl;
-    
-    // Копирование URL
-    copyUrlButton.addEventListener('click', function() {
-        connectionUrlInput.select();
-        document.execCommand('copy');
-        alert('URL скопирован в буфер обмена!');
-    });
     
     // Обработчики выбора токена
     tokenElements.forEach(token => {
@@ -82,10 +77,7 @@ const gameIdDisplay = document.getElementById('gameIdDisplay');
     }
 });
 
-forceCheckGameBtn.addEventListener('click', async () => {
-    console.log('Force checking game state...');
-    await checkGameState();
-});
+
 async function getMySessionId() {
     try {
         // Получаем sessionId с сервера
@@ -102,6 +94,27 @@ async function getMySessionId() {
     }
     return mySessionId;
 }
+window.addEventListener('beforeunload', async (e) => {
+    if (isPageClosing) return; // Предотвращаем множественные вызовы
+    
+    isPageClosing = true;
+    
+    // Пытаемся выйти из лобби/игры при закрытии
+    try {
+        if (currentLobbyId || currentGameId) {
+            // Используем sendBeacon для надежной отправки при закрытии
+            const data = new Blob([JSON.stringify({})], {type: 'application/json'});
+            navigator.sendBeacon('/Game/LeaveLobby', data);
+        }
+    } catch (error) {
+        console.error('Error during page unload:', error);
+    }
+});
+window.addEventListener('pageshow', (e) => {
+    if (e.persisted) {
+        isPageClosing = false;
+    }
+});
 // Your code appears to be missing some context, but here's the corrected structure
 async function checkGameState() {
     try {
@@ -156,26 +169,7 @@ async function checkGameState() {
         console.error('Error in manual game check:', error);
     }
 }
-function updateConnectionStatus(connected) {
-    const statusElement = document.getElementById('connectionStatus');
-    if (connected) {
-        statusElement.textContent = '✅ Подключено';
-        statusElement.style.background = '#28a745';
-    } else {
-        statusElement.textContent = '❌ Нет подключения';
-        statusElement.style.background = '#dc3545';
-    }
-}
-function updateConnectionStatus(connected) {
-    const statusElement = document.getElementById('connectionStatus');
-    if (connected) {
-        statusElement.textContent = '✅ Подключено';
-        statusElement.style.background = '#28a745';
-    } else {
-        statusElement.textContent = '❌ Нет подключения';
-        statusElement.style.background = '#dc3545';
-    }
-}
+
 async function savePlayer() {
     const formData = new FormData();
     formData.append('name', playerNameInput.value);
@@ -204,26 +198,47 @@ async function savePlayer() {
 async function ensurePlayerExists() {
     try {
         const response = await fetch('/api/Player');
-        if (!response.ok) throw new Error('Network error');
-        
         const result = await response.json();
         
-        if (!result.success || !result.player) {
-            // Пытаемся создать игрока через quickCreate
-            const quickResponse = await fetch('/api/Player/quickCreate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    Name: 'Игрок',
-                    Color: selectedColor || '#FF5252'
-                })
-            });
+        // Если игрок уже существует, обновляем его данные
+        if (result.success && result.player) {
+            currentPlayer = result.player;
             
-            const quickResult = await quickResponse.json();
-            return quickResult.success;
+            // Обновляем цвет, если он выбран
+            if (selectedColor && result.player.color !== selectedColor) {
+                await fetch('/api/Player', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `name=${encodeURIComponent(result.player.name)}&color=${encodeURIComponent(selectedColor)}`
+                });
+            }
+            return true;
         }
         
-        return true;
+        // Создаем нового игрока с выбранным цветом
+        const playerName = playerNameInput?.value || 'Игрок';
+        const quickResponse = await fetch('/api/Player/quickCreate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                Name: playerName,
+                Color: selectedColor || '#FF5252'
+            })
+        });
+        
+        const quickResult = await quickResponse.json();
+        
+        if (quickResult.success) {
+            currentPlayer = quickResult.player;
+            // Обновляем поле имени если нужно
+            if (playerNameInput && !playerNameInput.value) {
+                playerNameInput.value = playerName;
+            }
+            return true;
+        }
+        
+        return false;
+        
     } catch (error) {
         console.error('Error ensuring player exists:', error);
         return false;
@@ -236,30 +251,48 @@ async function loadPlayer() {
         
         if (result.success && result.player) {
             currentPlayer = result.player;
-            playerNameInput.value = currentPlayer.name;
+            if (playerNameInput) {
+                playerNameInput.value = currentPlayer.name;
+            }
             
             if (currentPlayer.avatarPath) {
                 avatarPreview.innerHTML = `<img src="${currentPlayer.avatarPath}" alt="Аватар">`;
+            }
+            
+            // Автоматически выбираем цвет игрока если он есть
+            if (currentPlayer.color && !selectedColor) {
+                selectedColor = currentPlayer.color;
+                // Находим и выделяем соответствующий токен
+                tokenElements.forEach(token => {
+    token.addEventListener('click', async () => {
+        tokenElements.forEach(t => t.classList.remove('selected'));
+        token.classList.add('selected');
+        selectedColor = token.getAttribute('data-color');
+        console.log('Selected color:', selectedColor);
+        
+        // Автоматически обновляем цвет игрока при выборе
+        if (currentPlayer) {
+            await ensurePlayerExists();
+        }
+    });
+});
             }
         }
     } catch (error) {
         console.error('Ошибка загрузки игрока:', error);
     }
 }
-avatarUpload.addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            avatarPreview.innerHTML = `<img src="${e.target.result}" alt="Превью">`;
-        };
-        reader.readAsDataURL(file);
-    }
-});
 // Обработчики модального окна
+// Исправляем обработчик открытия профиля
 openProfileBtn.addEventListener('click', async () => {
-    await loadPlayer();
-    profileModal.style.display = 'block';
+    // Убеждаемся что игрок существует перед открытием модального окна
+    const playerExists = await ensurePlayerExists();
+    if (playerExists) {
+        await loadPlayer();
+        profileModal.style.display = 'block';
+    } else {
+        alert('Ошибка загрузки профиля');
+    }
 });
 
 closeProfileModalBtn.addEventListener('click', () => {
@@ -336,15 +369,19 @@ window.addEventListener('click', (e) => {
 });
     // Создание лобби
     createLobbyBtn.addEventListener('click', async () => {
-        await getMySessionId();
+    await getMySessionId();
     if (!selectedColor) {
         alert('Пожалуйста, выберите цвет для игры!');
         return;
     }
     
     try {
-        // Сначала убедимся что игрок существует
-        await ensurePlayerExists();
+        // Сначала убедимся что игрок существует с правильными данными
+        const playerCreated = await ensurePlayerExists();
+        if (!playerCreated) {
+            alert('Ошибка создания игрока');
+            return;
+        }
         
         console.log('Creating lobby...');
         const params = {
@@ -369,40 +406,21 @@ window.addEventListener('click', (e) => {
             return;
         }
             
-            // Присоединяемся к созданному лобби
-            console.log('Joining lobby:', result.lobbyId);
-            const joinResponse = await fetch('/Game/JoinLobby', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    LobbyId: result.lobbyId,
-                    Color: selectedColor,
-                    Name: `Игрок ${selectedColor}`
-                })
-            });
-            
-            const joinResult = await joinResponse.json();
-            console.log('Join lobby result:', joinResult);
-            
-            if (joinResult.success) {
-                currentLobbyId = result.lobbyId;
-                myColor = selectedColor;
-                isLobbyCreator = true;
-                
-                showScreen('lobby');
-                statusElement.textContent = 'Лобби создано! Ожидаем игроков...';
-                connectionUrlInput.value = `${baseUrl}?lobbyId=${currentLobbyId}`;
-                startGameSection.style.display = 'block';
-                
-                startLobbyPolling();
-            } else {
-                alert('Ошибка присоединения: ' + joinResult.error);
-            }
-        } catch (error) {
-            console.error('Ошибка:', error);
-            alert('Произошла ошибка при создании лобби');
-        }
-    });
+        currentLobbyId = result.lobbyId;
+        myColor = selectedColor;
+        isLobbyCreator = true;
+        
+        showScreen('lobby');
+        statusElement.textContent = 'Лобби создано! Ожидаем игроков...';
+        startGameSection.style.display = 'block';
+        
+        startLobbyPolling();
+        
+    } catch (error) {
+        console.error('Ошибка:', error);
+        alert('Произошла ошибка при создании лобби');
+    }
+});
     
     // Показать список лобби
     showLobbiesBtn.addEventListener('click', async () => {
@@ -450,92 +468,98 @@ window.addEventListener('click', (e) => {
     async function joinExistingLobby(lobbyId) {
     try {
         console.log('Joining existing lobby:', lobbyId);
+        
+        if (!selectedColor) {
+            alert('Пожалуйста, выберите цвет перед присоединением!');
+            return;
+        }
+
+        await ensurePlayerExists();
+        
+        const playerResponse = await fetch('/api/Player');
+        const playerResult = await playerResponse.json();
+        const playerName = (playerResult.success && playerResult.player) 
+            ? playerResult.player.name 
+            : 'Игрок';
+
         const joinResponse = await fetch('/Game/JoinLobby', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ LobbyId: lobbyId })
+            body: JSON.stringify({
+                LobbyId: lobbyId,
+                Color: selectedColor,
+                Name: playerName
+            })
         });
         
         const joinResult = await joinResponse.json();
         console.log('Join result:', joinResult);
         
         if (joinResult.success) {
-            currentLobbyId = lobbyId;
-            isLobbyCreator = false;
-            
-            showScreen('lobby');
-            statusElement.textContent = 'Присоединились к лобби! Ожидаем начала игры...';
-            startGameSection.style.display = 'none';
-            
-            // Принудительно проверяем, не началась ли уже игра
-            setTimeout(async () => {
-                const gameCheck = await checkGameStarted();
-                if (gameCheck) {
-                    console.log('Game already started, switching to game screen');
-                }
-            }, 1000);
-            
-            startLobbyPolling();
+    currentLobbyId = lobbyId;
+    isLobbyCreator = false;
+    
+    showScreen('lobby');
+    statusElement.textContent = `Присоединились к лобби! Игроков: ${joinResult.lobby.playerCount}/6`;
+    startGameSection.style.display = 'none';
+    
+    startLobbyPolling();
+} else {
+            // Показываем конкретную ошибку от сервера
+            alert('Ошибка присоединения: ' + (joinResult.error || 'Неизвестная ошибка'));
+            // Возвращаем к списку лобби при ошибке
+            showScreen('lobbies');
+            await showLobbiesBtn.click(); // Обновляем список
         }
     } catch (error) {
         console.error('Ошибка присоединения к лобби:', error);
+        alert('Произошла ошибка при присоединении к лобби');
     }
 }
     
     // Обновление состояния лобби
-    async function updateLobbyState() {
-        try {
-            console.log('Updating lobby state...');
-            const response = await fetch('/Game/LobbyState');
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const lobbyData = await response.json();
-            console.log('Lobby state:', lobbyData);
-            
-            if (lobbyData.error) {
-                console.error('Lobby error:', lobbyData.error);
-                return;
-            }
-            
-            // Обновляем список игроков
-            updatePlayersList(lobbyData.players || []);
-            
-        } catch (error) {
-            console.error('Ошибка обновления состояния лобби:', error);
-        }
+    function updateLobbyState(lobbyData) {
+    if (lobbyData.playerCount !== undefined) {
+        statusElement.textContent = `Ожидаем игроков... (${lobbyData.playerCount}/6)`;
     }
+}
     
     // Запуск игры
     startGameBtn.addEventListener('click', async () => {
-        try {
-            console.log('Starting game...');
-            const response = await fetch('/Game/StartGame', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ LobbyId: currentLobbyId })
-            });
+    try {
+        console.log('Starting game...');
+        const response = await fetch('/Game/StartGame', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ LobbyId: currentLobbyId })
+        });
+        
+        const result = await response.json();
+        console.log('Start game result:', result);
+        
+        if (result.success) {
+            currentGameId = result.gameId;
+            statusElement.textContent = 'Игра начинается! Уведомляем других игроков...';
             
-            const result = await response.json();
-            console.log('Start game result:', result);
-            
-            if (result.success) {
-                currentGameId = result.gameId;
-                statusElement.textContent = 'Игра начинается!';
-                
-                // Немедленно переключаемся на экран игры
+            // Даем время другим игрокам получить уведомление
+            setTimeout(() => {
                 showScreen('game');
                 startGamePolling();
-            } else {
+            }, 1000);
+        } else {
+            // ПОКАЗЫВАЕМ ОШИБКУ ТОЛЬКО ЕСЛИ ЭТО НЕ СТАНДАРТНАЯ ПРОВЕРКА НА 2 ИГРОКА
+            if (result.error && !result.error.includes("Need at least 2 players")) {
                 alert('Не удалось начать игру: ' + result.error);
+            } else if (result.error) {
+                // Для ошибки "недостаточно игроков" показываем информативное сообщение
+                statusElement.textContent = 'Ожидаем второго игрока... (1/2)';
             }
-        } catch (error) {
-            console.error('Ошибка начала игры:', error);
-            alert('Ошибка при запуске игры');
         }
-    });
+    } catch (error) {
+        console.error('Ошибка начала игры:', error);
+        alert('Ошибка при запуске игры');
+    }
+});
     
     // Выйти из лобби
     leaveLobbyBtn.addEventListener('click', async () => {
@@ -583,7 +607,34 @@ window.addEventListener('click', (e) => {
         return false;
     }
 }
-    // Опрос состояния лобби
+// Добавьте эту функцию в scripts.js
+function updateStartGameButton(lobbyData) {
+    if (!lobbyData || !lobbyData.players) return;
+    
+    const playerCount = lobbyData.players.length;
+    const canStartGame = playerCount >= 2;
+    
+    if (startGameBtn) {
+        startGameBtn.disabled = !canStartGame;
+        
+        if (!canStartGame) {
+            startGameBtn.title = `Нужно минимум 2 игрока (сейчас: ${playerCount})`;
+            startGameBtn.style.opacity = '0.6';
+        } else {
+            startGameBtn.title = 'Начать игру';
+            startGameBtn.style.opacity = '1';
+        }
+    }
+    
+    // Обновляем статус
+    if (statusElement) {
+        if (playerCount < 2) {
+            statusElement.textContent = `Ожидаем игроков... (${playerCount}/2)`;
+        } else {
+            statusElement.textContent = `Готово к началу! (${playerCount}/6)`;
+        }
+    }
+}
     // Опрос состояния лобби
 function startLobbyPolling() {
     if (pollInterval) clearInterval(pollInterval);
@@ -631,6 +682,14 @@ function startLobbyPolling() {
     clearInterval(pollInterval);
     showScreen('game');
     startGamePolling();
+    updateStartGameButton(lobbyData);
+    
+    // ОБНОВЛЯЕМ СЕССИЮ НА СЕРВЕРЕ
+    await fetch('/Game/UpdateGameSession', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: currentGameId })
+    });
 }
         } catch (error) {
             console.error('Ошибка опроса лобби:', error);
@@ -689,24 +748,29 @@ async function fetchWithTimeout(url, options = {}, timeout = 5000) {
 async function fetchGameState() {
     try {
         console.log('Polling game state...');
-        const response = await fetchWithTimeout('/Game/GameState', {}, 5000);
+        const response = await fetchWithTimeout('/Game/GameState', {}, 3000);
         
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         const gameData = await response.json();
-        console.log('Game poll result:', gameData);
+        
+        // Проверяем, изменилось ли состояние игры
+        const gameStateChanged = JSON.stringify(gameData) !== JSON.stringify(lastGameState);
         
         if (gameData.error) {
-            await handleGameError(gameData.error);
+            await handleGameError(gameData.error, gameData.redirectToLobby);
             return;
         }
         
-        // Обновляем UI
-        updateBoard(gameData);
-        updateStatus(gameData);
-        updateGamePlayersList(gameData.players || [], gameData.currentPlayerIndex || 0);;
+        // Обновляем UI только если состояние изменилось
+        if (gameStateChanged) {
+            updateBoard(gameData);
+            updateStatus(gameData);
+            updateGamePlayersList(gameData.players || [], gameData.currentPlayerIndex || 0);
+            lastGameState = gameData;
+        }
         
     } catch (error) {
         console.error('Ошибка опроса игры:', error);
@@ -714,33 +778,20 @@ async function fetchGameState() {
             console.log('Game request timeout');
             updateConnectionStatus(false);
         }
-        await handleGameError(error.message);
+        await handleGameError(error.message, false);
     }
 }
-async function handleGameError(error) {
+async function handleGameError(error, redirectToLobby = false) {
     console.error('Game error:', error);
     
-    if (error.includes("not found") || error.includes("not in this game")) {
-        console.log('Game access error, checking lobby...');
+    if (error.includes("not found") || error.includes("not in this game") || redirectToLobby) {
+        console.log('Game access error, returning to lobby');
+        clearInterval(pollInterval);
+        showScreen('lobby');
+        startLobbyPolling();
         
-        const lobbyResponse = await fetch('/Game/LobbyState');
-        const lobbyData = await lobbyResponse.json();
-        
-        if (!lobbyData.error && lobbyData.status === 'GameStarted') {
-            console.log('Game still exists, updating session...');
-            currentGameId = lobbyData.gameId;
-            
-            // Обновляем сессию
-            await fetch('/Game/UpdateGameSession', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gameId: lobbyData.gameId })
-            });
-        } else {
-            console.log('Returning to lobby');
-            clearInterval(pollInterval);
-            showScreen('lobby');
-            startLobbyPolling();
+        if (error.includes("not in this game")) {
+            alert('Вы не являетесь участником этой игры. Возврат в лобби.');
         }
     }
 }
@@ -808,10 +859,7 @@ function startGamePolling() {
     fetchGameState();
     
     // Затем запускаем интервал
-    pollInterval = setInterval(fetchGameState, 2000);
-    
-    // Показываем/скрываем кнопку в зависимости от роли
-    //forceCheckGameBtn.style.display = isLobbyCreator ? 'none' : 'inline-block';
+    pollInterval = setInterval(fetchGameState, 1000);
 }
     // Обновление списка игроков в игре
 function updateGamePlayersList(players, currentPlayerIndex = 0) {
@@ -854,57 +902,113 @@ function updateGamePlayersList(players, currentPlayerIndex = 0) {
 }
     
     // Обновление игровой доски
-    function updateBoard(gameData) {
-        if (!gameData || !gameData.cells) {
-            console.log('No game data for board update');
-            return;
-        }
+function updateBoard(gameData) {
+    if (!gameData || !gameData.cells) {
+        console.log('No game data for board update');
+        return;
+    }
+    
+    console.log('Updating game board with dimensions:', gameData.width, 'x', gameData.height);
+    boardElement.innerHTML = '';
+    const width = gameData.width || 5;
+    const height = gameData.height || 5;
+    
+    boardElement.style.gridTemplateColumns = `repeat(${width}, 60px)`;
+    
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const cellIndex = y * width + x;
+            const cellData = gameData.cells[cellIndex];
+            const cell = document.createElement('div');
+            cell.className = 'cell' + (cellData?.blocked ? ' blocked' : '');
+            cell.dataset.x = x;
+            cell.dataset.y = y;
+            
+            // ДОБАВЛЯЕМ ОБРАБОТЧИК ДЛЯ ВСЕХ НЕЗАБЛОКИРОВАННЫХ ЯЧЕЕК
+            if (cellData && !cellData.blocked) {
+                cell.addEventListener('click', handleCellClick);
+                cell.style.cursor = 'pointer';
+            } else {
+                cell.style.cursor = 'not-allowed';
+            }
+            
+            if (cellData && cellData.owner) {
+    // Ищем владельца ячейки среди игроков
+    const ownerPlayer = gameData.players?.find(p => p.id === cellData.owner);
+    if (ownerPlayer) {
+        // ЗАПОЛНЯЕМ ВСЮ КЛЕТКУ ЦВЕТОМ ИГРОКА
+        cell.style.backgroundColor = ownerPlayer.color;
+        cell.style.backgroundSize = 'cover';
+        cell.style.backgroundPosition = 'center';
         
-        console.log('Updating game board');
-        boardElement.innerHTML = '';
-        const width = gameData.width || 5;
-        const height = gameData.height || 5;
-        
-        boardElement.style.gridTemplateColumns = `repeat(${width}, 60px)`;
-        
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const cellIndex = y * width + x;
-                const cellData = gameData.cells[cellIndex];
-                const cell = document.createElement('div');
-                cell.className = 'cell' + (cellData?.blocked ? ' blocked' : '');
-                cell.dataset.x = x;
-                cell.dataset.y = y;
-                
-                if (cellData && !cellData.blocked && cellData.owner === null) {
-                    cell.addEventListener('click', handleCellClick);
-                }
-                
-                if (cellData && cellData.owner) {
-    const owner = gameData.players?.find(p => p.id === cellData.owner);
-    if (owner) {
-        cell.style.backgroundColor = owner.color;
-        
-        // Отображаем аватар вместо галочки
-        if (owner.avatar) {
-            cell.innerHTML = `<img src="${owner.avatar}" class="cell-avatar" alt="${owner.name}">`;
+        // ЕСЛИ ЕСТЬ АВАТАР - ИСПОЛЬЗУЕМ ЕГО КАК ФОН
+        if (ownerPlayer.avatarPath) {
+            cell.style.backgroundImage = `url(${ownerPlayer.avatarPath})`;
+            cell.innerHTML = ''; // УБИРАЕМ ТЕКСТ
         } else {
-            cell.textContent = owner.name.charAt(0); // Первая буква имени
+            // ЕСЛИ АВАТАРА НЕТ - ПОКАЗЫВАЕМ ПЕРВУЮ БУКВУ ИМЕНИ
+            cell.style.backgroundImage = 'none';
+            cell.textContent = ownerPlayer.name ? ownerPlayer.name.charAt(0).toUpperCase() : '?';
+            cell.style.color = 'white';
+            cell.style.fontWeight = 'bold';
+            cell.style.display = 'flex';
+            cell.style.alignItems = 'center';
+            cell.style.justifyContent = 'center';
+            cell.style.fontSize = '20px';
         }
         
-        cell.style.color = 'white';
+        // ДОБАВЛЯЕМ ИНДИКАТОР ПРОГРЕССА ДАЖЕ ДЛЯ ЗАНЯТЫХ КЛЕТОК
+        const progressBar = document.createElement('div');
+        progressBar.className = 'capture-progress';
+        progressBar.style.width = '100%'; // ПОЛНАЯ ШИРИНА ДЛЯ ЗАНЯТЫХ КЛЕТОК
+        progressBar.style.background = 'transparent'; // ПРОЗРАЧНЫЙ ДЛЯ ЗАНЯТЫХ КЛЕТОК
+        progressBar.title = `Захвачено игроком: ${ownerPlayer.name}`;
+        cell.appendChild(progressBar);
+    }
+} else {
+    // ДЛЯ СВОБОДНЫХ КЛЕТОК - СТАНДАРТНАЯ ЛОГИКА ПРОГРЕССА
+    const progressBar = document.createElement('div');
+    progressBar.className = 'capture-progress';
+    if (cellData && gameData.captureProgress > 0) {
+        const progressPercent = (cellData.progress / gameData.captureProgress) * 100;
+        progressBar.style.width = `${Math.min(progressPercent, 100)}%`;
+        
+        // ЦВЕТОВАЯ ИНДИКАЦИЯ ПРОГРЕССА
+        if (progressPercent < 33) {
+            progressBar.style.background = '#ff5252';
+        } else if (progressPercent < 66) {
+            progressBar.style.background = '#ffeb3b';
+        } else {
+            progressBar.style.background = '#4CAF50';
+        }
+    }
+    cell.appendChild(progressBar);
+}
+            
+            // Прогресс захвата ячейки
+            const progressBar = document.createElement('div');
+            progressBar.className = 'capture-progress';
+            if (cellData && gameData.captureProgress) {
+                const progressPercent = (cellData.progress / gameData.captureProgress) * 100;
+                progressBar.style.width = `${Math.min(progressPercent, 100)}%`;
+                
+                // Визуальная индикация прогресса
+                if (progressPercent < 33) {
+                    progressBar.style.background = '#ff5252'; // Красный
+                } else if (progressPercent < 66) {
+                    progressBar.style.background = '#ffeb3b'; // Желтый
+                } else {
+                    progressBar.style.background = '#4CAF50'; // Зеленый
+                }
+            } else {
+                progressBar.style.width = '0%';
+            }
+            cell.appendChild(progressBar);
+            
+            boardElement.appendChild(cell);
+        }
     }
 }
-                
-                const progressBar = document.createElement('div');
-                progressBar.className = 'capture-progress';
-                progressBar.style.width = cellData ? `${(cellData.progress / gameData.captureProgress) * 100}%` : '0%';
-                cell.appendChild(progressBar);
-                
-                boardElement.appendChild(cell);
-            }
-        }
-    }
     
     // Обновление статуса игры
 function updateStatus(gameData) {
@@ -943,28 +1047,17 @@ function updateStatus(gameData) {
     
     // Обработчик клика по клетке
 async function handleCellClick(e) {
-    if (!currentGameId) return;
+    if (!currentGameId) {
+        alert('Нет активной игры');
+        return;
+    }
     
     const x = parseInt(e.target.dataset.x);
     const y = parseInt(e.target.dataset.y);
     
+    console.log('Cell clicked at:', x, y, 'Game ID:', currentGameId);
+    
     try {
-        // Сначала проверяем, наш ли ход
-        const gameStateResponse = await fetch('/Game/GameState');
-        const gameState = await gameStateResponse.json();
-        
-        if (gameState.error) {
-            alert('Ошибка получения состояния игры: ' + gameState.error);
-            return;
-        }
-        
-        const currentPlayer = gameState.players[gameState.currentPlayerIndex || 0];
-        if (!currentPlayer || currentPlayer.sessionId !== mySessionId) {
-            alert('Сейчас не ваш ход!');
-            return;
-        }
-        
-        console.log('Making move:', x, y);
         const response = await fetch('/Game/MakeMove', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -972,18 +1065,17 @@ async function handleCellClick(e) {
         });
         
         const result = await response.json();
-        console.log('Move result:', result);
+        console.log('Move response:', result);
         
-        if (!result.success) {
-            alert('Неверный ход! ' + (result.error || ''));
+        if (result.success) {
+            fetchGameState();
+        } else {
+            alert(result.error || 'Неверный ход!');
         }
         
-        // Обновляем состояние игры
-        fetchGameState();
-        
     } catch (error) {
-        console.error('Ошибка хода:', error);
-        alert('Ошибка при выполнении хода');
+        console.error('Ошибка выполнения хода:', error);
+        alert('Ошибка соединения при выполнении хода');
     }
 }
     // Проверка параметров URL
@@ -992,7 +1084,6 @@ async function handleCellClick(e) {
         const lobbyId = urlParams.get('lobbyId');
         
         if (lobbyId) {
-            connectionUrlInput.value = window.location.href;
             statusElement.textContent = 'Найдена ссылка на лобби. Выберите цвет и нажмите "Присоединиться"';
         }
     }

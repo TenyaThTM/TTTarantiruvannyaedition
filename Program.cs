@@ -2,7 +2,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Добавляем сервисы в контейнер
 builder.Services.AddControllersWithViews();
-builder.Services.AddSingleton<TicTacToeGame.Services.GameService>();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {
@@ -10,8 +9,11 @@ builder.Services.AddSession(options =>
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
 });
-builder.Services.AddSingleton<TicTacToeGame.Services.PlayerService>();
+builder.Services.AddControllersWithViews();
 builder.Services.AddSingleton<TicTacToeGame.Services.GameService>();
+builder.Services.AddSingleton<TicTacToeGame.Services.PlayerService>();
+builder.Services.AddHostedService<TicTacToeGame.Services.CleanupBackgroundService>(); // Добавляем фоновый сервис
+builder.Services.AddDistributedMemoryCache();
 
 // Для работы с файлами
 builder.Services.Configure<IISServerOptions>(options =>

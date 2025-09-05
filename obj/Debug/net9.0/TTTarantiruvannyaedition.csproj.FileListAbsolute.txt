@@ -94,4 +94,4 @@
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/ref/TTTarantiruvannyaedition.dll
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/TTTarantiruvannyaedition.sourcelink.json
 /home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/compressed/1fjp0khsil-lwejugtluq.gz
-/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/compressed/nbzc9a0tzz-0j64ob831u.gz
+/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/obj/Debug/net9.0/compressed/nbzc9a0tzz-9u4ndxti0d.gz

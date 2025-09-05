@@ -30,18 +30,6 @@
 <button id="openProfile" style="position: fixed; top: 20px; right: 20px; padding: 10px;">
     👤 Профиль
 </button>
-<div class="connection-status" id="connectionStatus" style="margin: 10px; padding: 5px; background: #28a745; color: white; border-radius: 5px;">
-    ✅ Подключено
-</div>
-    <!-- Строка с информацией о подключении -->
-    <div class="connection-info">
-        <label>Адрес для подключения:</label>
-        <input type="text" id="connectionUrl" readonly>
-        <button id="copyUrl">Копировать</button>
-    </div>
-    <div style="margin-top: 20px;">
-
-
     <!-- Главный экран -->
     <div id="mainScreen">
         <div class="controls">
@@ -129,11 +117,6 @@
         <div class="game-header">
             <h2>Игра #<span id="gameIdDisplay"></span></h2>
             
-            <!-- Кнопка принудительной проверки -->
-            <button id="forceCheckGame" style="padding: 10px; margin: 10px; background: #17a2b8;">
-                🔄 Проверить состояние игры
-            </button>
-            
             <div class="game-info">
                 <span>Текущий ход: </span>
                 <span id="currentPlayer" class="player-badge"></span>
@@ -152,6 +135,47 @@
 </div>
 
 <style>
+#startGame:disabled {
+    background: #6c757d !important;
+    cursor: not-allowed !important;
+    opacity: 0.6 !important;
+}
+
+#startGame:disabled:hover {
+    background: #6c757d !important;
+    transform: none !important;
+}
+.cell {
+    width: 60px;
+    height: 60px;
+    border: 2px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: white;
+    position: relative;
+    font-size: 20px;
+    font-weight: bold;
+    transition: all 0.2s;
+    background-size: cover;
+    background-position: center;
+}
+
+.cell-avatar {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.capture-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 6px;
+    width: 0%;
+    transition: width 0.3s ease;
+}
 #forceCheckGame {
     padding: 10px 15px;
     background: #17a2b8;
