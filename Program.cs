@@ -10,6 +10,14 @@ builder.Services.AddSession(options =>
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
 });
+builder.Services.AddSingleton<TicTacToeGame.Services.PlayerService>();
+builder.Services.AddSingleton<TicTacToeGame.Services.GameService>();
+
+// Для работы с файлами
+builder.Services.Configure<IISServerOptions>(options =>
+{
+    options.AllowSynchronousIO = true;
+});
 
 var app = builder.Build();
 

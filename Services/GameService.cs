@@ -9,31 +9,49 @@ namespace TicTacToeGame.Services
     {
         private readonly List<GameState> _games = new List<GameState>();
         private readonly List<Lobby> _lobbies = new List<Lobby>();
+        private readonly PlayerService _playerService;
         private readonly object _lock = new object();
         private int _nextGameId = 1;
         private int _nextLobbyId = 1;
 
-        public Lobby CreateLobby(int width, int height, int blockChance, int winLength, int captureProgress)
+        public GameService(PlayerService playerService)
         {
-            lock (_lock)
-            {
-                var lobby = new Lobby
-                {
-                    Id = _nextLobbyId++,
-                    Width = width,
-                    Height = height,
-                    BlockChance = blockChance,
-                    WinLength = winLength,
-                    CaptureProgress = captureProgress,
-                    Players = new List<Player>(),
-                    Status = LobbyStatus.WaitingForPlayers,
-                    CreatedAt = DateTime.Now
-                };
-
-                _lobbies.Add(lobby);
-                return lobby;
-            }
+            _playerService = playerService;
         }
+
+        public Lobby CreateLobby(int width, int height, int blockChance, int winLength, int captureProgress, string creatorSessionId)
+{
+    lock (_lock)
+    {
+        // Создаем игрока если не существует
+        var creator = _playerService.GetPlayerBySession(creatorSessionId);
+        if (creator == null)
+        {
+            // Автоматически создаем игрока с default именем
+            creator = _playerService.CreateOrUpdatePlayer(creatorSessionId, "Игрок", null, "#FF5252");
+        }
+
+        var lobby = new Lobby
+        {
+            Id = _nextLobbyId++,
+            Width = width,
+            Height = height,
+            BlockChance = blockChance,
+            WinLength = winLength,
+            CaptureProgress = captureProgress,
+            Players = new List<Player>(),
+            Status = LobbyStatus.WaitingForPlayers,
+            CreatedAt = DateTime.Now,
+            CreatorId = creator.Id
+        };
+
+        // Добавляем создателя в лобби
+        lobby.Players.Add(creator);
+
+        _lobbies.Add(lobby);
+        return lobby;
+    }
+}
 
        public GameState GetGame(int gameId)
 {
@@ -52,6 +70,10 @@ namespace TicTacToeGame.Services
             Console.WriteLine($"Game {gameId} is already over");
             return game;
         }
+
+        // Очищаем устаревшие сессии
+        game.Players.RemoveAll(p => 
+            _playerService.GetPlayerBySession(p.SessionId) == null);
 
         return game;
     }
@@ -80,35 +102,14 @@ public Lobby GetLobby(int lobbyId)
         return lobby;
     }
 }
-
-        public bool JoinLobby(int lobbyId, string playerId, string color, string name)
-        {
-            lock (_lock)
-            {
-                var lobby = _lobbies.FirstOrDefault(l => l.Id == lobbyId);
-                if (lobby == null || lobby.Status != LobbyStatus.WaitingForPlayers)
-                    return false;
-
-                // Проверяем, не занят ли цвет
-                if (lobby.Players.Any(p => p.Color == color))
-                    return false;
-
-                // Проверяем, не присоединялся ли уже этот игрок
-                if (lobby.Players.Any(p => p.Id == playerId))
-                    return true; // Уже в лобби
-
-                lobby.Players.Add(new Player
-                {
-                    Id = playerId,
-                    Color = color,
-                    Name = name ?? $"Игрок {color}"
-                });
-
-                return true;
-            }
-        }
-
-        public bool StartGame(int lobbyId, string playerId)
+public bool LobbyExists(int lobbyId)
+{
+    lock (_lock)
+    {
+        return _lobbies.Any(l => l.Id == lobbyId && l.Status == LobbyStatus.WaitingForPlayers);
+    }
+}
+        public bool JoinLobby(int lobbyId, string sessionId)
 {
     lock (_lock)
     {
@@ -116,38 +117,85 @@ public Lobby GetLobby(int lobbyId)
         if (lobby == null || lobby.Status != LobbyStatus.WaitingForPlayers)
             return false;
 
-        // Проверяем, что игрок есть в лобби
-        if (!lobby.Players.Any(p => p.Id == playerId))
-            return false;
-
-        // Минимально 2 игрока для начала игры
-        if (lobby.Players.Count < 2)
-            return false;
-
-        // Создаем игру из лобби
-        var game = new GameState
+        var player = _playerService.GetPlayerBySession(sessionId);
+        if (player == null)
         {
-            Id = _nextGameId++,
-            Width = lobby.Width,
-            Height = lobby.Height,
-            BlockChance = lobby.BlockChance,
-            WinLength = lobby.WinLength,
-            CaptureProgress = lobby.CaptureProgress,
-            Players = new List<Player>(lobby.Players),
-            CurrentPlayerIndex = 0,
-            GameOver = false,
-            CreatedAt = DateTime.Now
+            // Создаем игрока автоматически
+            player = _playerService.CreateOrUpdatePlayer(sessionId, "Игрок", null, GetNextAvailableColor(lobby));
+        }
+
+        // Проверяем, не присоединялся ли уже этот игрок
+        if (lobby.Players.Any(p => p.SessionId == sessionId))
+            return true;
+
+        // Клонируем игрока для лобби (чтобы избежать ссылочных проблем)
+        var lobbyPlayer = new Player 
+        { 
+            Id = player.Id,
+            SessionId = player.SessionId,
+            Name = player.Name,
+            AvatarPath = player.AvatarPath,
+            Color = player.Color,
+            CreatedAt = player.CreatedAt,
+            LastSeen = DateTime.Now
         };
 
-        InitializeBoard(game);
-        _games.Add(game);
-
-        // Меняем статус лобби
-        lobby.Status = LobbyStatus.GameStarted;
-        lobby.GameId = game.Id;
-
+        lobby.Players.Add(lobbyPlayer);
         return true;
     }
+}
+
+
+        public bool StartGame(int lobbyId, string sessionId)
+        {
+            lock (_lock)
+            {
+                var lobby = _lobbies.FirstOrDefault(l => l.Id == lobbyId);
+                if (lobby == null || lobby.Status != LobbyStatus.WaitingForPlayers)
+                    return false;
+
+                var player = _playerService.GetPlayerBySession(sessionId);
+                if (player == null || !lobby.Players.Any(p => p.Id == player.Id))
+                    return false;
+
+                if (lobby.Players.Count < 2)
+                    return false;
+
+                var game = new GameState
+                {
+                    Id = _nextGameId++,
+                    Width = lobby.Width,
+                    Height = lobby.Height,
+                    BlockChance = lobby.BlockChance,
+                    WinLength = lobby.WinLength,
+                    CaptureProgress = lobby.CaptureProgress,
+                    Players = new List<Player>(lobby.Players),
+                    CurrentPlayerIndex = 0,
+                    GameOver = false,
+                    CreatedAt = DateTime.Now
+                };
+
+                InitializeBoard(game);
+                _games.Add(game);
+
+                lobby.Status = LobbyStatus.GameStarted;
+                lobby.GameId = game.Id;
+
+                return true;
+            }
+        }
+private string GetNextAvailableColor(Lobby lobby)
+{
+    var usedColors = lobby.Players
+        .Where(p => !string.IsNullOrEmpty(p.Color) && p.Color != "null")
+        .Select(p => p.Color)
+        .ToHashSet();
+    
+    var availableColors = new[] { "#FF5252", "#FFEB3B", "#4CAF50", "#2196F3", "#9C27B0", "#FF9800" };
+    
+    var nextColor = availableColors.FirstOrDefault(color => !usedColors.Contains(color)) ?? availableColors[0];
+    Console.WriteLine($"Assigned color: {nextColor}, Used colors: {string.Join(", ", usedColors)}");
+    return nextColor;
 }
 public void CleanupOldSessions()
 {
@@ -291,6 +339,7 @@ public void CleanupOldSessions()
         public LobbyStatus Status { get; set; }
         public int? GameId { get; set; }
         public DateTime CreatedAt { get; set; }
+        public string CreatorId { get; set; }
     }
 
     public enum LobbyStatus

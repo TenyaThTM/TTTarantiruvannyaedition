@@ -16,13 +16,7 @@ namespace TicTacToeGame.Models
         public DateTime CreatedAt { get; set; } = DateTime.Now;
     }
 
-    public class Player
-    {
-        public string Id { get; set; }
-        public string Color { get; set; }
-        public string Name { get; set; }
-        public bool IsReady { get; set; }
-    }
+    
 
     public class Cell
     {

@@ -1,0 +1,134 @@
+body {
+    font-family: 'Comic Sans MS', cursive, sans-serif;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: #f0f8ff;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.controls {
+    margin-bottom: 20px;
+    background-color: #fff;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    width: 100%;
+}
+
+.param-group {
+    margin-bottom: 10px;
+}
+
+label {
+    display: inline-block;
+    width: 150px;
+}
+
+input {
+    width: 60px;
+    padding: 5px;
+}
+
+.form-group {
+    margin: 15px 0;
+}
+
+.form-group label {
+    width: auto;
+    margin-right: 10px;
+}
+
+.form-group input {
+    width: 150px;
+}
+
+.token-selection {
+    display: flex;
+    justify-content: center;
+    margin: 15px 0;
+    flex-wrap: wrap;
+}
+
+.token {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin: 5px;
+    cursor: pointer;
+    border: 3px solid transparent;
+    transition: all 0.3s;
+}
+
+.token.selected {
+    border: 3px solid black;
+    transform: scale(1.1);
+}
+
+.buttons {
+    margin: 15px 0;
+}
+
+button {
+    padding: 10px 20px;
+    margin: 0 10px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+#restart {
+    background-color: #f44336;
+}
+
+.game-board {
+    display: inline-block;
+    margin-top: 20px;
+}
+
+.cell {
+    width: 40px;
+    height: 40px;
+    border: 1px solid #999;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 2px;
+    cursor: pointer;
+    background-color: white;
+    position: relative;
+    overflow: hidden;
+}
+
+.cell.blocked {
+    background-color: #777;
+    cursor: not-allowed;
+}
+
+.capture-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 5px;
+    background-color: #4CAF50;
+    width: 0%;
+}
+
+.status {
+    margin-top: 20px;
+    font-size: 18px;
+    font-weight: bold;
+}

@@ -1,0 +1,7 @@
+/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/bin/Release/net9.0/publish/TTTarantiruvannyaedition
+/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/bin/Release/net9.0/publish/appsettings.Development.json
+/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/bin/Release/net9.0/publish/appsettings.json
+/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/bin/Release/net9.0/publish/TTTarantiruvannyaedition.dll
+/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/bin/Release/net9.0/publish/TTTarantiruvannyaedition.deps.json
+/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/bin/Release/net9.0/publish/TTTarantiruvannyaedition.runtimeconfig.json
+/home/tenya/VSprojects/TTTCode/TTTarantiruvannyaedition/bin/Release/net9.0/publish/TTTarantiruvannyaedition.pdb
