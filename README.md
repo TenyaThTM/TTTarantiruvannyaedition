@@ -1,4 +1,4 @@
-fully made with AI
+made by AI
 
 playable version 5/09/2025
 creating local server on port 5089
